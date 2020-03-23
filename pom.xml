@@ -42,5 +42,10 @@
         <artifactId>flink-gelly_2.11</artifactId>
         <version>1.10.0</version>
     </dependency>
+    <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>4.13</version>
+    </dependency>
 </dependencies>>
 </project>
