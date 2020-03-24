@@ -35,7 +35,7 @@ import org.apache.flink.util.Collector;
 import org.junit.Test;
 
 public class TestSlice extends AbstractTestBase {
-/*
+
     @Test
 	public void testFoldNeighborsDefault() throws Exception {
         final String resultPath = getTempDirPath("result");
@@ -53,7 +53,25 @@ public class TestSlice extends AbstractTestBase {
 		env.execute();
         compareResultsByLinesInMemory(expectedResult, resultPath);
 	}
-/*
+
+@Test
+	public void newTestFoldNeighboursDefaults() throws Exception {
+		final String resultPath = getTempDirPath("result");
+		final String expectedResult = "1,25\n" +
+				"2,23\n" +
+				"3,69\n" +
+				"4,45\n" +
+				"5,51\n";
+
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		SimpleEdgeStream<Long, Long> graph = new SimpleEdgeStream<>(GraphStreamTestUtils.getLongLongEdgeDataStream(env), env);
+		DataStream<Tuple2<Long, Long>> sum = graph.slice(Time.of(1, TimeUnit.SECONDS))
+				.applyOnNeighbors(new NewSumEdgesValues());
+		sum.writeAsCsv(resultPath, FileSystem.WriteMode.OVERWRITE);
+		env.execute();
+		compareResultsByLinesInMemory(expectedResult, resultPath);
+	}
+
 	@Test
 	public void testFoldNeighborsIn() throws Exception {
         final String resultPath = getTempDirPath("result");
@@ -71,8 +89,24 @@ public class TestSlice extends AbstractTestBase {
 		env.execute();
         compareResultsByLinesInMemory(expectedResult, resultPath);
 	}
- */
-/*
+ 	@Test
+	public void newTestFoldNeighborsIn() throws Exception {
+		final String resultPath = getTempDirPath("result");
+		final String expectedResult = "1,51\n" +
+				"2,12\n" +
+				"3,36\n" +
+				"4,34\n" +
+				"5,80\n";
+
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		SimpleEdgeStream<Long, Long> graph = new SimpleEdgeStream<>(GraphStreamTestUtils.getLongLongEdgeDataStream(env), env);
+		DataStream<Tuple2<Long, Long>> sum = graph.slice(Time.of(1, TimeUnit.SECONDS), EdgeDirection.IN)
+				.applyOnNeighbors(new NewSumEdgesValues());
+		sum.writeAsCsv(resultPath, FileSystem.WriteMode.OVERWRITE);
+		env.execute();
+		compareResultsByLinesInMemory(expectedResult, resultPath);
+    }
+
 	@Test
 	public void testFoldNeighborsAll() throws Exception {
         final String resultPath = getTempDirPath("result");
@@ -90,7 +124,25 @@ public class TestSlice extends AbstractTestBase {
 		env.execute();
         compareResultsByLinesInMemory(expectedResult, resultPath);
 	}
-*/
+
+	@Test
+	public void newTestFoldNeighborsAll() throws Exception {
+		final String resultPath = getTempDirPath("result");
+		final String expectedResult = "1,76\n" +
+				"2,35\n" +
+				"3,105\n" +
+				"4,79\n" +
+				"5,131\n";
+
+		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		SimpleEdgeStream<Long, Long> graph = new SimpleEdgeStream<>(GraphStreamTestUtils.getLongLongEdgeDataStream(env), env);
+		DataStream<Tuple2<Long, Long>> sum = graph.slice(Time.of(1, TimeUnit.SECONDS), EdgeDirection.ALL)
+				.applyOnNeighbors(new NewSumEdgesValues());
+		sum.writeAsCsv(resultPath, FileSystem.WriteMode.OVERWRITE);
+		env.execute();
+		compareResultsByLinesInMemory(expectedResult, resultPath);
+	}
+
 	@Test
 	public void testReduceOnNeighborsDefault() throws Exception {
         final String resultPath = getTempDirPath("result");
@@ -206,6 +258,18 @@ public class TestSlice extends AbstractTestBase {
 			accum.setField(id, 0);
 			accum.setField(accum.f1 + edgeValue, 1);
 			return accum;
+		}
+	}
+
+	private static final class NewSumEdgesValues implements EdgesApply<Long, Long, Tuple2<Long, Long>> {
+		@Override
+		public void applyOnEdges(Long vertexID,
+								 Iterable<Tuple2<Long, Long>> neighbors, Collector<Tuple2<Long, Long>> out) {
+			long sum = 0;
+			for (Tuple2<Long, Long> n: neighbors) {
+				sum += n.f1;
+			}
+			out.collect(new Tuple2<Long, Long>(vertexID, sum));
 		}
 	}
 
