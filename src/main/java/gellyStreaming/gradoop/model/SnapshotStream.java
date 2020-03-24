@@ -33,46 +33,11 @@ public class  SnapshotStream<K, EV> {
      * @param foldFunction
      * @return the result stream after applying the user-defined fold operation on the window
      */
-    /*
+
     public <T> DataStream<T> foldNeighbors(T initialValue, final EdgesFold<K, EV, T> foldFunction) {
-        return windowedStream.aggregate(initialValue, new EdgesAggregateFunction<K, EV, T>(aggregateFunction));
         return windowedStream.fold(initialValue, new EdgesFoldFunction<K, EV, T>(foldFunction));
     }
 
-    public static final class EdgesAggregateFunction<K, EV, T> implements
-            AggregateFunction<K, T, EV>, ResultTypeQueryable<T> {
-
-        private final EdgesFold<K, EV, T> aggregateFunction;
-
-        public EdgesAggregateFunction(EdgesFold<K, EV, T> foldFunction) {
-            this.aggregateFunction = aggregateFunction;
-        }
-        @Override
-        public TypeInformation<T> getProducedType() {
-            return TypeExtractor.createTypeInfo(EdgesFold.class, foldFunction.getClass(), 2,
-                    null, null);
-        }
-
-        @Override
-        public T createAccumulator() {
-            return null;
-        }
-
-        @Override
-        public T add(K k, T t) {
-            return null;
-        }
-
-        @Override
-        public EV getResult(T t) {
-            return null;
-        }
-
-        @Override
-        public T merge(T t, T acc1) {
-            return null;
-        }
-    }
 
     @SuppressWarnings("serial")
     public static final class EdgesFoldFunction<K, EV, T>
@@ -96,7 +61,7 @@ public class  SnapshotStream<K, EV> {
                     null, null);
         }
     }
-*/
+
     /**
      //	 * Performs an aggregation on the neighboring edges of each vertex on the graph window stream.
      * <p>
@@ -175,7 +140,6 @@ public class  SnapshotStream<K, EV> {
                     edgesIterator.remove();
                 }
             };
-            // TODO figure out why this lambda doesn't work?
             Iterable<Tuple2<K, EV>> neighborsIterable = new Iterable<Tuple2<K, EV>>() {
                 public Iterator<Tuple2<K, EV>> iterator() {
                     return neighborsIterator;
