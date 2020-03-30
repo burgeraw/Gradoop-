@@ -2,7 +2,6 @@ package gellyStreaming.gradoop.model;
 
 import gellyStreaming.gradoop.algorithms.BipartitenessCheck;
 import gellyStreaming.gradoop.algorithms.Candidates;
-import gellyStreaming.gradoop.algorithms.NewBipartitenessCheck;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -20,10 +19,12 @@ public class EdgesFold2EdgesApplyTest {
         bipartition.print();
 
         graph = new SimpleEdgeStream<>(getEdgesDataSet(env), env);
+        /*
         DataStream<Candidates> newBipartition = graph.aggregate
                 (new NewBipartitenessCheck<Long, NullValue>((long) 500));
         newBipartition.print();
         env.execute("Bipartiteness Check");
+        */
     }
 
 

@@ -15,7 +15,6 @@ import org.apache.flink.util.Collector;
 
 public class bipartiteExample implements ProgramDescription {
 
-    @SuppressWarnings("serial")
     public static void main(String[] args) throws Exception {
 
         // Set up the environment
@@ -45,6 +44,7 @@ public class bipartiteExample implements ProgramDescription {
     private static boolean fileOutput = false;
     private static String edgeInputPath = "src/main/resources/ml-100k/u.data";
     private static String outputPath = null;
+    public static int counter = 0;
 
     private static boolean parseParameters(String[] args) {
 

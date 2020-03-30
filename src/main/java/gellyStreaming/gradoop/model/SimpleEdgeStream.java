@@ -7,6 +7,7 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
@@ -15,7 +16,9 @@ import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.graph.Vertex;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.PrintSinkFunction;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.types.NullValue;
@@ -23,6 +26,7 @@ import org.apache.flink.util.Collector;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 
 /**
@@ -123,6 +127,11 @@ public class SimpleEdgeStream<K, EV> extends GraphStream<K, NullValue, EV> {
     public DataStream<Edge<K, EV>> getEdges() {
         return this.edges;
     }
+
+    public DataStreamSink<Edge<K, EV>> print() {
+        return this.edges.print();
+    }
+
 
     /**
      * Applies an incremental aggregation on a graphstream and returns a stream of aggregation results
@@ -511,7 +520,7 @@ public class SimpleEdgeStream<K, EV> extends GraphStream<K, NullValue, EV> {
      * @return a stream of Tuple3, where the first 2 fields identify the edge processed
      * and the third field is the adjacency list that was updated by processing this edge.
      */
-    public DataStream<Tuple3<K, K, TreeSet<K>>> buildNeighborhood(boolean directed) {
+    public DataStream<Tuple4<K, K, TreeSet<K>, ReentrantReadWriteLock>> buildNeighborhood(boolean directed) {
 
         DataStream<Edge<K, EV>> edges = this.getEdges();
         if (!directed) {
@@ -520,25 +529,34 @@ public class SimpleEdgeStream<K, EV> extends GraphStream<K, NullValue, EV> {
         return edges.keyBy(0).flatMap(new BuildNeighborhoods<K, EV>());
     }
 
-    private static final class BuildNeighborhoods<K, EV> implements FlatMapFunction<Edge<K, EV>, Tuple3<K, K, TreeSet<K>>> {
-
+    private static final class BuildNeighborhoods<K, EV> implements FlatMapFunction<Edge<K, EV>, Tuple4<K, K, TreeSet<K>, ReentrantReadWriteLock>> {
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
         Map<K, TreeSet<K>> neighborhoods = new HashMap<>();
-        Tuple3<K, K, TreeSet<K>> outTuple = new Tuple3<>();
+        Tuple4<K, K, TreeSet<K>, ReentrantReadWriteLock> outTuple = new Tuple4<>();
 
         //TODO Figure out Treeset functionality
-        public void flatMap(Edge<K, EV> e, Collector<Tuple3<K, K, TreeSet<K>>> out) {
+        // Problem because of not thread-safe (?)
+        public void flatMap(Edge<K, EV> e, Collector<Tuple4<K, K, TreeSet<K>, ReentrantReadWriteLock>> out) {
             TreeSet<K> t;
+
             if (neighborhoods.containsKey(e.getSource())) {
+                lock.writeLock().lock();
                 t = neighborhoods.get(e.getSource());
+                lock.writeLock().unlock();
             } else {
+                lock.writeLock().lock();
                 t = new TreeSet<>();
+                lock.writeLock().unlock();
             }
+            lock.writeLock().lock();
             t.add(e.getTarget());
             neighborhoods.put(e.getSource(), t);
+            lock.writeLock().unlock();
 
             outTuple.setField(e.getSource(), 0);
             outTuple.setField(e.getTarget(), 1);
             outTuple.setField(t, 2);
+            outTuple.setField(lock, 3);
             out.collect(outTuple);
         }
     }

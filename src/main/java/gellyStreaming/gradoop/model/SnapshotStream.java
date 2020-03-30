@@ -34,12 +34,38 @@ public class  SnapshotStream<K, EV> {
      * @return the result stream after applying the user-defined fold operation on the window
      */
 //*
+
+    public <T> DataStream<T> foldNeighbours(T initialValue, final EdgesApply<K, EV, T> foldFunction) {
+        return windowedStream.apply(new FoldAggregateFunction<>(foldFunction));
+    }
+
+    public static final class FoldAggregateFunction<K, EV, T> implements
+            WindowFunction<Edge<K, EV>, T, K, TimeWindow>, ResultTypeQueryable<T> {
+
+        private final EdgesApply<K, EV, T> foldFunction;
+
+        public FoldAggregateFunction(EdgesApply<K, EV, T> foldFunction) {
+            this.foldFunction = foldFunction;
+        }
+
+        @Override
+        public TypeInformation<T> getProducedType() {
+            return TypeExtractor.createTypeInfo(EdgesApply.class, foldFunction.getClass(), 2,
+                    null, null);
+        }
+
+        @Override
+        public void apply(K k, TimeWindow timeWindow, Iterable<Edge<K, EV>> iterable, Collector<T> collector) throws Exception {
+
+        }
+
+    }
+
     public <T> DataStream<T> foldNeighbors(T initialValue, final EdgesFold<K, EV, T> foldFunction) {
         return windowedStream.fold(initialValue, new EdgesFoldFunction<K, EV, T>(foldFunction));
     }
 
-
-    @SuppressWarnings("serial")
+        @SuppressWarnings("serial")
     public static final class EdgesFoldFunction<K, EV, T>
             implements FoldFunction<Edge<K, EV>, T>, ResultTypeQueryable<T>
     {
