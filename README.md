@@ -6,8 +6,9 @@ By Annemarie Burger
 
 ## Datasets ##
 - [Network Repository. An Interactive Scientific Network Data Repository.](http://networkrepository.com/index.php)
-- [Multiple datasets for streaming graphs](https://www.eecs.wsu.edu/~yyao/StreamingGraphs.html)
+- [Streaming Graphs Datasets](https://www.eecs.wsu.edu/~yyao/StreamingGraphs.html)
 - [Graphs Datasets](https://sites.google.com/site/xiaomengsite/research/resources/graph-dataset)
+- [Yahoo Graph Datasets](https://webscope.sandbox.yahoo.com/catalog.php?datatype=g&guccounter=1)
 
 ## Resources ##
 - Foundation of operators and their implementation from [Gelly-streaming](https://github.com/vasia/gelly-streaming)
