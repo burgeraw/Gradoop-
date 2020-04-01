@@ -24,7 +24,61 @@ public class  SnapshotStream<K, EV> {
         this.windowedStream = window;
     }
 
-    //TODO deprecated method rewrite, is this even useful?
+//TODO incorrect tests
+    /**
+     *
+     * @param initialValue
+     * @param foldFunction
+     * @param <T>
+     * @return the result stream after applying the user-defined fold operation on the window
+     */
+    public <T> DataStream<T> foldNeighbors(T initialValue, final EdgesFold<K, EV, T> foldFunction) {
+        return windowedStream.aggregate(new EdgesFoldFunction(foldFunction, initialValue));
+    }
+
+    public static final class EdgesFoldFunction<K, EV, T> implements
+            ResultTypeQueryable<T>, AggregateFunction<Edge<K, EV>, T, T> {
+
+        private final EdgesFold<K, EV, T> foldFunction;
+        private final T initialValue;
+
+        public EdgesFoldFunction(EdgesFold<K, EV, T> foldFunction, T initialValue) {
+            this.initialValue = initialValue;
+            this.foldFunction = foldFunction;
+        }
+
+        @Override
+        public T createAccumulator() {
+            return this.initialValue;
+        }
+
+        @Override
+        public T add(Edge<K, EV> o, T t) {
+            try {
+                return this.foldFunction.foldEdges(t, o.getSource(), o.getTarget(), o.getValue());
+            } catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+        }
+
+        @Override
+        public T getResult(T t) {
+            return t;
+        }
+
+        @Override
+        public T merge(T t, T acc1) {
+            return null;
+        }
+
+        @Override
+        public TypeInformation<T> getProducedType() {
+            return TypeExtractor.createTypeInfo(EdgesFold.class, foldFunction.getClass(), 2,
+                    null, null);
+        }
+    }
+
 
     /**
      * Performs a neighborhood fold on the graph window stream.
@@ -34,45 +88,18 @@ public class  SnapshotStream<K, EV> {
      * @return the result stream after applying the user-defined fold operation on the window
      */
 //*
-
-    public <T> DataStream<T> foldNeighbours(T initialValue, final EdgesApply<K, EV, T> foldFunction) {
-        return windowedStream.apply(new FoldAggregateFunction<>(foldFunction));
-    }
-
-    public static final class FoldAggregateFunction<K, EV, T> implements
-            WindowFunction<Edge<K, EV>, T, K, TimeWindow>, ResultTypeQueryable<T> {
-
-        private final EdgesApply<K, EV, T> foldFunction;
-
-        public FoldAggregateFunction(EdgesApply<K, EV, T> foldFunction) {
-            this.foldFunction = foldFunction;
-        }
-
-        @Override
-        public TypeInformation<T> getProducedType() {
-            return TypeExtractor.createTypeInfo(EdgesApply.class, foldFunction.getClass(), 2,
-                    null, null);
-        }
-
-        @Override
-        public void apply(K k, TimeWindow timeWindow, Iterable<Edge<K, EV>> iterable, Collector<T> collector) throws Exception {
-
-        }
-
-    }
-
-    public <T> DataStream<T> foldNeighbors(T initialValue, final EdgesFold<K, EV, T> foldFunction) {
-        return windowedStream.fold(initialValue, new EdgesFoldFunction<K, EV, T>(foldFunction));
+    public <T> DataStream<T> foldNeighborsOld(T initialValue, final EdgesFold<K, EV, T> foldFunction) {
+        return windowedStream.fold(initialValue, new EdgesFoldFunctionOld<K, EV, T>(foldFunction));
     }
 
         @SuppressWarnings("serial")
-    public static final class EdgesFoldFunction<K, EV, T>
+    public static final class EdgesFoldFunctionOld<K, EV, T>
             implements FoldFunction<Edge<K, EV>, T>, ResultTypeQueryable<T>
     {
 
         private final EdgesFold<K, EV, T> foldFunction;
 
-        public EdgesFoldFunction(EdgesFold<K, EV, T> foldFunction) {
+        public EdgesFoldFunctionOld(EdgesFold<K, EV, T> foldFunction) {
             this.foldFunction = foldFunction;
         }
 
