@@ -7,10 +7,6 @@ out/
 
 *.kotlin_module
 
-src/main/resources/ml-100k/
-
 target/classes/ml-100k/
-
-src/main/resources/
 
 target/classes/

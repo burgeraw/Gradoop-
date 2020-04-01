@@ -58,15 +58,6 @@ public class ExactTriangleCount {
         env.execute("Exact Triangle Count");
 
         System.out.println(counter2);
-        System.out.println(vertices68);
-        System.out.println(vertices68.size());
-        System.out.println(vertices172);
-        System.out.println(vertices172.size());
-        for(int item: vertices68){
-            if(vertices172.contains(item)) {
-                System.out.println(item);
-            }
-        }
 
     }
 
@@ -171,7 +162,8 @@ public class ExactTriangleCount {
     //private static String edgeInputPath = "src/main/resources/Cit-HepPh.txt";
     //private static String edgeInputPath = null;
     //private static String edgeInputPath = "src/main/resources/as-733/all days/as20000102.txt";
-    private static String edgeInputPath = "src/main/resources/ml-100k/u.data";
+    //private static String edgeInputPath = "src/main/resources/ml-100k/u.data";
+    private static String edgeInputPath = "src/main/resources/aves-sparrow-social.edges";
     private static String resultPath = null;
 
     private static boolean parseParameters(String[] args) {
@@ -196,8 +188,6 @@ public class ExactTriangleCount {
 
     public static int counter2 = 0;
     public static ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-    public static HashSet<Integer> vertices68 = new HashSet<>();
-    public static HashSet<Integer> vertices172 =  new HashSet<>();
     @SuppressWarnings("serial")
     private static SimpleEdgeStream<Integer, NullValue> getGraphStream(StreamExecutionEnvironment env) {
         if (edgeInputPath != null) {
@@ -205,23 +195,10 @@ public class ExactTriangleCount {
                     .flatMap(new FlatMapFunction<String, Edge<Integer, NullValue>>() {
                         @Override
                         public void flatMap(String s, Collector<Edge<Integer, NullValue>> out) {
-                            lock.readLock().lock();
-                            if (counter2 == 0) {
-                                out.collect(new Edge<>(68, 172, NullValue.getInstance()));
-                                //out.collect(new Edge<>(68, 305, NullValue.getInstance()));
-                                //out.collect(new Edge<>(172, 305, NullValue.getInstance()));
-                            }
-                            lock.readLock().unlock();
-                            String[] fields = s.split("\t");
+                            String[] fields = s.split(" ");
                             if (!fields[0].equals("#")) {
-                                if(Integer.parseInt(fields[0])==68) {
-                                    vertices68.add(Integer.parseInt(fields[1]));
-                                }
-                                if(Integer.parseInt(fields[0])==172) {
-                                    vertices172.add(Integer.parseInt(fields[1]));
-                                }
                                 int src = Integer.parseInt(fields[0]);
-                                int trg = Integer.parseInt(fields[1])+100000;
+                                int trg = Integer.parseInt(fields[1]);
                                 lock.writeLock().lock();
                                 counter2++;
                                 lock.writeLock().unlock();
