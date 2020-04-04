@@ -1,5 +1,6 @@
 package gellyStreaming.gradoop.model;
 
+import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -14,9 +15,15 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
+import org.gradoop.common.model.impl.id.GradoopId;
+import org.gradoop.common.model.impl.id.GradoopIdSet;
+import org.gradoop.common.model.impl.properties.Properties;
+import org.gradoop.flink.util.GradoopFlinkConfig;
+import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
+import org.gradoop.temporal.model.impl.pojo.TemporalVertex;
 
-import java.util.HashSet;
-import java.util.Set;
+import javax.xml.crypto.Data;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 public class Tests {
@@ -41,14 +48,60 @@ public class Tests {
         env.execute();
     }
 
-    public static void testWindowedGraph() {
+    public static void testTemporalGraph() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        GradoopIdSet graphId = new GradoopIdSet();
+        DataStream<TemporalEdge> edges = env.readTextFile("src/main/resources/ml-100k/u.data")
+                .map(new MapFunction<String, TemporalEdge>() {
+                    @Override
+                    public TemporalEdge map(String s) throws Exception {
+                        String[] values = s.split("\t");
+                        Map<String, Object> properties = new HashMap<>();
+                        properties.put("rating", values[2]);
+                        return new TemporalEdge(GradoopId.get(), "watched", new GradoopId(0, Integer.parseInt(values[0]), (short)0,0),
+                                new GradoopId(0, Integer.parseInt(values[1]),(short)0,0), Properties.createFromMap(properties),
+                                graphId, Long.parseLong(values[3]), Long.MAX_VALUE);
+                    }
+                });
+        DataStream<TemporalVertex> vertices = env.readTextFile("src/main/resources/ml-100k/u.data")
+                .flatMap(new FlatMapFunction<String, TemporalVertex>() {
+                    Map<String, Long> verticesUsers = new HashMap();
+                    Map<String, Long> verticesMovies = new HashMap<>();
+                    @Override
+                    public void flatMap(String s, Collector<TemporalVertex> out) throws Exception {
+                        String[] values = s.split("\t");
+                        long validFrom = Long.parseLong(values[3]);
+                        if (verticesUsers.containsKey(values[0])) {
+                            validFrom = Math.min(validFrom, verticesUsers.get(values[0]));
+                        }
+                        verticesUsers.put(values[0], validFrom);
+                        Map<String, Object> properties = new HashMap<>();
+                        properties.put("age", (int)((Math.random() * 82) + 18));
+                        out.collect(new TemporalVertex(new GradoopId(0,Integer.parseInt(values[0]), (short)0,0), "user",
+                                Properties.createFromMap(properties), graphId, validFrom, Long.MAX_VALUE));
+                        if(verticesMovies.containsKey(values[1])) {
+                            validFrom = Math.min(validFrom, verticesUsers.get(values[1]));
+                        }
+                        properties.clear();
+                        properties.put("director", "unknown");
+                        properties.put("released", (int)((Math.random()*10)+2010));
+                        out.collect(new TemporalVertex(new GradoopId(1, Integer.parseInt(values[1]),(short)0,0), "movie",
+                                Properties.createFromMap(properties), graphId, validFrom, Long.MAX_VALUE));
+                    }
+                });
+        TemporalGraphStream<GradoopId, String, String> graph = new TemporalGraphStream(env, edges, vertices);
+        //graph.printEdges();
+        //graph.printVertices();
+        graph.numberOfVertices().print();
+        env.execute();
+
     }
 
 
 
     public static void main(String[] args) throws Exception {
-        testLoadingGraph();
-        testWindowedGraph();
+        //testLoadingGraph();
+        testTemporalGraph();
     }
 }
 

@@ -35,7 +35,7 @@ import org.apache.flink.util.Collector;
 import org.junit.Test;
 
 public class TestSlice extends AbstractTestBase {
-
+/*
     @Test
 	public void testFoldNeighborsDefault() throws Exception {
         final String resultPath = getTempDirPath("result");
@@ -71,7 +71,7 @@ public class TestSlice extends AbstractTestBase {
 		env.execute();
 		compareResultsByLinesInMemory(expectedResult, resultPath);
 	}
-
+*/
 @Test
 	public void newTestFoldNeighboursDefaults() throws Exception {
 		final String resultPath = getTempDirPath("result");
@@ -89,7 +89,7 @@ public class TestSlice extends AbstractTestBase {
 		env.execute();
 		compareResultsByLinesInMemory(expectedResult, resultPath);
 	}
-
+/*
 	@Test
 	public void testFoldNeighborsIn() throws Exception {
         final String resultPath = getTempDirPath("result");
@@ -124,6 +124,7 @@ public class TestSlice extends AbstractTestBase {
 		env.execute();
 		compareResultsByLinesInMemory(expectedResult, resultPath);
 	}
+ */
  	@Test
 	public void newTestFoldNeighborsIn() throws Exception {
 		final String resultPath = getTempDirPath("result");
@@ -141,7 +142,7 @@ public class TestSlice extends AbstractTestBase {
 		env.execute();
 		compareResultsByLinesInMemory(expectedResult, resultPath);
     }
-
+/*
 	@Test
 	public void testFoldNeighborsAll() throws Exception {
         final String resultPath = getTempDirPath("result");
@@ -176,6 +177,8 @@ public class TestSlice extends AbstractTestBase {
 		env.execute();
 		compareResultsByLinesInMemory(expectedResult, resultPath);
 	}
+
+ */
 	@Test
 	public void newTestFoldNeighborsAll() throws Exception {
 		final String resultPath = getTempDirPath("result");

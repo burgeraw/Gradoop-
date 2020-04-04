@@ -32,6 +32,7 @@ public class  SnapshotStream<K, EV> {
      * @param <T>
      * @return the result stream after applying the user-defined fold operation on the window
      */
+    /*
     public <T> DataStream<T> foldNeighbors(T initialValue, final EdgesFold<K, EV, T> foldFunction) {
         return windowedStream.aggregate(new EdgesFoldFunction(foldFunction, initialValue));
     }
@@ -78,7 +79,7 @@ public class  SnapshotStream<K, EV> {
                     null, null);
         }
     }
-
+*/
 
     /**
      * Performs a neighborhood fold on the graph window stream.
