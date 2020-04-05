@@ -27,8 +27,11 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 public class Tests {
+
     public static void testLoadingGraph() throws Exception {
+
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
+
         DataStream<Edge<Long, Long>> edges = env
                 .readTextFile("src/main/resources/ml-100k/u.data")
                 .map(new MapFunction<String, Edge<Long, Long>>() {
@@ -49,8 +52,11 @@ public class Tests {
     }
 
     public static void testTemporalGraph() throws Exception {
+
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
         GradoopIdSet graphId = new GradoopIdSet();
+
         DataStream<TemporalEdge> edges = env.readTextFile("src/main/resources/ml-100k/u.data")
                 .map(new MapFunction<String, TemporalEdge>() {
                     @Override
@@ -58,41 +64,99 @@ public class Tests {
                         String[] values = s.split("\t");
                         Map<String, Object> properties = new HashMap<>();
                         properties.put("rating", values[2]);
-                        return new TemporalEdge(GradoopId.get(), "watched", new GradoopId(0, Integer.parseInt(values[0]), (short)0,0),
-                                new GradoopId(0, Integer.parseInt(values[1]),(short)0,0), Properties.createFromMap(properties),
-                                graphId, Long.parseLong(values[3]), Long.MAX_VALUE);
+
+                        return new TemporalEdge(GradoopId.get(),
+                                                "watched",
+                                                new GradoopId(0, Integer.parseInt(values[0]), (short)0,0),
+                                                new GradoopId(0, Integer.parseInt(values[1]), (short)0,0),
+                                                Properties.createFromMap(properties),
+                                                graphId,
+                                                Long.parseLong(values[3]), // (valid until) starting time
+                                                Long.MAX_VALUE             //               ending   time
+                        );
                     }
                 });
+
         DataStream<TemporalVertex> vertices = env.readTextFile("src/main/resources/ml-100k/u.data")
                 .flatMap(new FlatMapFunction<String, TemporalVertex>() {
                     Map<String, Long> verticesUsers = new HashMap();
                     Map<String, Long> verticesMovies = new HashMap<>();
+
                     @Override
                     public void flatMap(String s, Collector<TemporalVertex> out) throws Exception {
                         String[] values = s.split("\t");
                         long validFrom = Long.parseLong(values[3]);
+
                         if (verticesUsers.containsKey(values[0])) {
                             validFrom = Math.min(validFrom, verticesUsers.get(values[0]));
                         }
+
                         verticesUsers.put(values[0], validFrom);
+
                         Map<String, Object> properties = new HashMap<>();
                         properties.put("age", (int)((Math.random() * 82) + 18));
-                        out.collect(new TemporalVertex(new GradoopId(0,Integer.parseInt(values[0]), (short)0,0), "user",
-                                Properties.createFromMap(properties), graphId, validFrom, Long.MAX_VALUE));
+
+                        out.collect(new TemporalVertex(new GradoopId(0,Integer.parseInt(values[0]), (short)0,0),
+                                                        "user",
+                                                        Properties.createFromMap(properties),
+                                                        graphId,
+                                                        validFrom,
+                                                        Long.MAX_VALUE)
+                        );
+
                         if(verticesMovies.containsKey(values[1])) {
                             validFrom = Math.min(validFrom, verticesUsers.get(values[1]));
                         }
                         properties.clear();
                         properties.put("director", "unknown");
                         properties.put("released", (int)((Math.random()*10)+2010));
-                        out.collect(new TemporalVertex(new GradoopId(1, Integer.parseInt(values[1]),(short)0,0), "movie",
-                                Properties.createFromMap(properties), graphId, validFrom, Long.MAX_VALUE));
+
+                        out.collect(new TemporalVertex(new GradoopId(1, Integer.parseInt(values[1]),(short)0,0),
+                                                        "movie",
+                                                        Properties.createFromMap(properties),
+                                                        graphId,
+                                                        validFrom,
+                                                        Long.MAX_VALUE)
+                        );
                     }
                 });
+
+        // Q1
+        // TODO: Q1: Intuitively, this does not hold. You are reading the same file that essentially contains edges ONLY. Why???
+
+        // Q2
+        // TODO: Q2: Also, if we assume that you read the edge file and a separate vertex file simultaneously, how do you ensure
+        // TODO: that the vertices of an edge that you ingested and have given for processing in a streaming fashion, really
+        // TODO: exist in the vertex DataStream already as well???. You are just reading the files. Could you elaborate?
+
+        // Therefore...
+
+        // TODO: You should do something cleaner first. The most common format is an EdgeStream. You read the edges and you infer
+        // TODO: the vertices implicitly. Implement a TemporalEdgeStream class.
+
+        // Q3
+        // TODO: The SimpleEdgeStream class is not good enough already???
+        // TODO: You just have make sure you can also add temporal ranges and an ID for each graph (graphID), edge (edgeID) and
+        // TODO: vertex (vertexID).
+
+        // Q4
+        // TODO You do not maintain state for the graph at all. DataStream is a "flowing context"
+        // TODO: Check how/if they store the graph in GRADOOP code and locate the specific classes!
+        // TODO: In adjacency list (AL) format? In edge list (EL)? In a compressed form like Compressed Sparsed Row (CSR)
+        // TODO: Read this one it is useful: https://arxiv.org/pdf/1912.12740.pdf
+        // TODO: Do they use hash tables?
+        // TODO: You use DataStream<TemporalVertex> vertices.
+        // TODO: But, if you want to access a specific vertex, how are you going to do it efficiently?
+        // TODO: Especially if you have a processing window then we should store the part of the graph inside the window at least
+        // TODO: And be able to access it fast. Food for thought.
+
+        // TODO: Oh, please write code as neatly as possible for me to read it fast, so that I can help. Similar to how I transformed it. :)
+
         TemporalGraphStream<GradoopId, String, String> graph = new TemporalGraphStream(env, edges, vertices);
         //graph.printEdges();
         //graph.printVertices();
-        graph.numberOfVertices().print();
+        graph.numberOfVertices().print().setParallelism(1);
+//        graph.numberOfEdges().printToErr().setParallelism(1);
         env.execute();
 
     }
@@ -100,7 +164,7 @@ public class Tests {
 
 
     public static void main(String[] args) throws Exception {
-        //testLoadingGraph();
+//        testLoadingGraph();
         testTemporalGraph();
     }
 }
