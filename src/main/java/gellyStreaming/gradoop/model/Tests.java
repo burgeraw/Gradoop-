@@ -46,8 +46,8 @@ public class Tests {
                 });
         GraphStream<Long, NullValue, Long> graph = new SimpleEdgeStream<>(edges, env);
         //graph.getEdges().print();
-        graph.numberOfEdges().print();
-        graph.numberOfVertices().print();
+        //graph.numberOfEdges().print();
+        //graph.numberOfVertices().print();
         env.execute();
     }
 
@@ -68,7 +68,7 @@ public class Tests {
                         return new TemporalEdge(GradoopId.get(),
                                                 "watched",
                                                 new GradoopId(0, Integer.parseInt(values[0]), (short)0,0),
-                                                new GradoopId(0, Integer.parseInt(values[1]), (short)0,0),
+                                                new GradoopId(0, Integer.parseInt(values[1]), (short)1,0),
                                                 Properties.createFromMap(properties),
                                                 graphId,
                                                 Long.parseLong(values[3]), // (valid until) starting time
@@ -156,16 +156,54 @@ public class Tests {
         //graph.printEdges();
         //graph.printVertices();
         //graph.numberOfVertices().print().setParallelism(1);
-        graph.numberOfEdges().printToErr().setParallelism(1);
+        //graph.numberOfEdges().printToErr().setParallelism(1);
+        //graph.getTempEdges().print();
         env.execute();
 
     }
 
+    public static void testTemporalGraph2() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
+        GradoopIdSet graphId = new GradoopIdSet();
+
+        DataStream<TemporalEdge> edges = env.readTextFile("src/main/resources/ml-100k/u.data")
+                .map(new MapFunction<String, TemporalEdge>() {
+                    @Override
+                    public TemporalEdge map(String s) throws Exception {
+                        String[] values = s.split("\t");
+                        Map<String, Object> properties = new HashMap<>();
+                        properties.put("rating", values[2]);
+
+                        return new TemporalEdge(GradoopId.get(),
+                                "watched",
+                                new GradoopId(0, Integer.parseInt(values[0]), (short)0,0),
+                                new GradoopId(0, Integer.parseInt(values[1]), (short)1,0),
+                                Properties.createFromMap(properties),
+                                graphId,
+                                Long.parseLong(values[3]), // (valid until) starting time
+                                Long.MAX_VALUE             //               ending   time
+                        );
+                    }
+                });
+        SimpleTemporalEdgeStream<TemporalEdge> edgestream = new SimpleTemporalEdgeStream<>(edges, env);
+        DataStream<GradoopId> vertices = edgestream.getEdges().flatMap(
+                new FlatMapFunction<TemporalEdge, GradoopId>() {
+                    @Override
+                    public void flatMap(TemporalEdge temporalEdge, Collector<GradoopId> collector) throws Exception {
+                        collector.collect(temporalEdge.getSourceId());
+                        collector.collect(temporalEdge.getTargetId());
+                    }
+                });
+
+        vertices.print();
+        env.execute();
+    }
 
     public static void main(String[] args) throws Exception {
-//        testLoadingGraph();
-        testTemporalGraph();
+        //testLoadingGraph();
+        //testTemporalGraph();
+        testTemporalGraph2();
     }
 }
 
