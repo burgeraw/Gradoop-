@@ -155,8 +155,8 @@ public class Tests {
         TemporalGraphStream<GradoopId, String, String> graph = new TemporalGraphStream(env, edges, vertices);
         //graph.printEdges();
         //graph.printVertices();
-        graph.numberOfVertices().print().setParallelism(1);
-//        graph.numberOfEdges().printToErr().setParallelism(1);
+        //graph.numberOfVertices().print().setParallelism(1);
+        graph.numberOfEdges().printToErr().setParallelism(1);
         env.execute();
 
     }

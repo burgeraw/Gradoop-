@@ -40,14 +40,24 @@ public class TemporalGraphStream<K, VV, EV> extends GraphStream<K, VV, EV> {
         return context;
     }
 
+    //TODO figure out how to efficiently return vertices & edges since this errors
     @Override
     public DataStream<Vertex<K, VV>> getVertices() {
         return vertices.map((MapFunction<TemporalVertex, Vertex<K, VV>>) temporalVertex -> {
-            return new Vertex<K, VV>((K)temporalVertex.getId(),
-                    (VV)temporalVertex.toString());
+            return (Vertex<K, VV>) new Vertex<Integer, String>(Integer.parseInt(temporalVertex.getId().toString()),
+                    temporalVertex.toString());
         });
     }
 
+    public DataStream<TemporalVertex> getTempVertices() {
+        return vertices;
+    }
+
+    public DataStream<TemporalEdge> getTempEdges() {
+        return edges;
+    }
+
+    //FIXME
     @Override
     public DataStream<Edge<K, EV>> getEdges() {
         return edges.map(new MapFunction<TemporalEdge, Edge<K, EV>>() {
