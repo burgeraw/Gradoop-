@@ -9,11 +9,13 @@ public abstract class GradoopGraphStream<TemporalGraphHead, TemporalVertex, Temp
 
     public abstract StreamExecutionEnvironment getContext();
 
-    public abstract DataStream<TemporalVertex> getVertices();
+    // TODO : prettier solution?
+    public abstract DataStream<?> getVertices();
 
     public abstract DataStream<TemporalEdge> getEdges();
 
-    public abstract DataStream<TemporalGraphHead> getGraphHead();
+    // TODO : prettier solution?
+    public abstract DataStream<?> getGraphHead();
 
     public abstract GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> distinct();
 

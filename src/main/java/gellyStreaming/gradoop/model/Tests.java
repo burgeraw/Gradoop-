@@ -1,5 +1,6 @@
 package gellyStreaming.gradoop.model;
 
+import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.tuple.Tuple;
@@ -10,6 +11,7 @@ import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
+import org.apache.flink.streaming.api.functions.windowing.AllWindowFunction;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
@@ -21,6 +23,7 @@ import org.gradoop.common.model.impl.properties.Properties;
 import org.gradoop.flink.util.GradoopFlinkConfig;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 import org.gradoop.temporal.model.impl.pojo.TemporalVertex;
+import scala.Int;
 
 import javax.xml.crypto.Data;
 import java.util.*;
@@ -185,8 +188,14 @@ public class Tests {
                                 Long.MAX_VALUE             //               ending   time
                         );
                     }
+                }).assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
+                    @Override
+                    public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
+                        return temporalEdge.getValidFrom();
+                    }
                 });
-        SimpleTemporalEdgeStream<TemporalEdge> edgestream = new SimpleTemporalEdgeStream<>(edges, env);
+        //DataStream<Integer> ratingsPerHour =  edges.timeWindowAll(Time.of(1, TimeUnit.HOURS));
+        SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges, env);
         DataStream<GradoopId> vertices = edgestream.getEdges().flatMap(
                 new FlatMapFunction<TemporalEdge, GradoopId>() {
                     @Override
@@ -196,7 +205,18 @@ public class Tests {
                     }
                 });
 
-        vertices.print();
+        //vertices.print();
+        final int[] counter = {0};
+        DataStream<Integer> numberOfVertices = edgestream.getVertices().map(
+                new MapFunction<TemporalVertex, Integer>() {
+                    @Override
+                    public Integer map(TemporalVertex temporalVertex) throws Exception {
+                        return counter[0]++;
+                    }
+                }
+        ).setParallelism(1);
+        edgestream.getVertices().print();
+        numberOfVertices.print();
         env.execute();
     }
 
