@@ -9,13 +9,11 @@ public abstract class GradoopGraphStream<TemporalGraphHead, TemporalVertex, Temp
 
     public abstract StreamExecutionEnvironment getContext();
 
-    // TODO : prettier solution?
-    public abstract DataStream<?> getVertices();
+    public abstract DataStream<TemporalVertex> getVertices();
 
     public abstract DataStream<TemporalEdge> getEdges();
 
-    // TODO : prettier solution?
-    public abstract DataStream<?> getGraphHead();
+    public abstract DataStream<TemporalGraphHead> getGraphHead();
 
     public abstract GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> distinct();
 
@@ -27,9 +25,7 @@ public abstract class GradoopGraphStream<TemporalGraphHead, TemporalVertex, Temp
 
     public abstract DataStream<Long> numberOfEdges();
 
-    public DataStream<Long> numberOfVertices() {
-        return null;
-    }
+    public abstract DataStream<Long> numberOfVertices();
 
     public abstract GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> undirected();
 
@@ -39,12 +35,12 @@ public abstract class GradoopGraphStream<TemporalGraphHead, TemporalVertex, Temp
     //public abstract <S extends Serializable, T> DataStream<T> aggregate(
     //        SummaryAggregation<K,EV,S,T> summaryAggregation);
 
-    public abstract GraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> filterEdges(
-            FilterFunction<TemporalVertex> filter);
-
-    public abstract GraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> filterVertices(
+    public abstract GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> filterEdges(
             FilterFunction<TemporalEdge> filter);
 
-    public abstract <NewEdgeType> GraphStream<TemporalGraphHead, TemporalVertex, NewEdgeType> mapEdges(
-            final MapFunction<TemporalEdge, NewEdgeType> mapper);
+    public abstract GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> filterVertices(
+            FilterFunction<TemporalVertex> filter);
+
+    public abstract GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> mapEdges(
+            final MapFunction<TemporalEdge, TemporalEdge> mapper);
 }

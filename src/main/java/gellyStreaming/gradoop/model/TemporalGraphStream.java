@@ -21,6 +21,7 @@ import java.util.Set;
 
 public class TemporalGraphStream<K, VV, EV> extends GraphStream<K, VV, EV> {
 
+    // WONT USE --> USE GradoopGraphStream and SimpleTemporalEdgeStream
     private final StreamExecutionEnvironment context;
     //private final GradoopFlinkConfig gradoopConfig;
     private final DataStream<TemporalEdge> edges;

@@ -167,7 +167,6 @@ public class Tests {
 
     public static void testTemporalGraph2() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-
         GradoopIdSet graphId = new GradoopIdSet();
 
         DataStream<TemporalEdge> edges = env.readTextFile("src/main/resources/ml-100k/u.data")
@@ -195,28 +194,9 @@ public class Tests {
                     }
                 });
         //DataStream<Integer> ratingsPerHour =  edges.timeWindowAll(Time.of(1, TimeUnit.HOURS));
-        SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges, env);
-        DataStream<GradoopId> vertices = edgestream.getEdges().flatMap(
-                new FlatMapFunction<TemporalEdge, GradoopId>() {
-                    @Override
-                    public void flatMap(TemporalEdge temporalEdge, Collector<GradoopId> collector) throws Exception {
-                        collector.collect(temporalEdge.getSourceId());
-                        collector.collect(temporalEdge.getTargetId());
-                    }
-                });
-
-        //vertices.print();
-        final int[] counter = {0};
-        DataStream<Integer> numberOfVertices = edgestream.getVertices().map(
-                new MapFunction<TemporalVertex, Integer>() {
-                    @Override
-                    public Integer map(TemporalVertex temporalVertex) throws Exception {
-                        return counter[0]++;
-                    }
-                }
-        ).setParallelism(1);
+        SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges, env, graphId);
         edgestream.getVertices().print();
-        numberOfVertices.print();
+
         env.execute();
     }
 

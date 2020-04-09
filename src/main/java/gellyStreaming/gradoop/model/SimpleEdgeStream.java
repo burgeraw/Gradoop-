@@ -428,7 +428,7 @@ public class SimpleEdgeStream<K, EV> extends GraphStream<K, NullValue, EV> {
                 new DegreeMapFunction<K>());
     }
 
-    private static final class DegreeTypeSeparator <K, EV>
+    static final class DegreeTypeSeparator <K, EV>
             implements FlatMapFunction<Edge<K, EV>, Vertex<K, Long>> {
         private final boolean collectIn;
         private final boolean collectOut;
