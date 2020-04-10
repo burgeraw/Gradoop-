@@ -6,7 +6,7 @@ By Annemarie Burger
 
 ## Papers ##
 - [Graph Stream Algorithms: A survey (2014)](https://people.cs.umass.edu/~mcgregor/papers/13-graphsurvey.pdf)
-- [Graphtides: a framework for evaluating stream-based graph processing platforms (GRADES 2018)](https://dl.acm.org/doi/pdf/10.1145/3210259.3210262)
+- [GraphTides: a framework for evaluating stream-based graph processing platforms (GRADES 2018)](https://dl.acm.org/doi/pdf/10.1145/3210259.3210262)
 - [Gradoop: Technical Report (2015)](https://www.dropbox.com/s/kg49nz8z3kcfa19/GradoopTR.pdf?dl=0)
 - [Scalability! But at what COST? (2015)](https://www.usenix.org/system/files/conference/hotos15/hotos15-paper-mcsherry.pdf), and  [slides](https://www.usenix.org/system/files/conference/hotos15/hotos15-paper-mcsherry.pdf). Let's keep COST in mind!
 - [Analyzing Extended Property Graphs with Apache Flink (NDA 2016)](https://dbs.uni-leipzig.de/file/EPGM.pdf)
