@@ -3,6 +3,8 @@ package gellyStreaming.gradoop.model;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
@@ -195,7 +197,7 @@ public class Tests {
                 });
         //DataStream<Integer> ratingsPerHour =  edges.timeWindowAll(Time.of(1, TimeUnit.HOURS));
         SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges, env, graphId);
-        edgestream.getVertices().print();
+        edgestream.getDegrees().print();
 
         env.execute();
     }

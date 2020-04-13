@@ -3,12 +3,14 @@ package gellyStreaming.gradoop.model;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.common.model.impl.id.GradoopIdSet;
@@ -48,7 +50,6 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     }
 
     //TODO What if edges/vertices get removed? Only appropriate for edge addition streams?
-    // TODO: fix errors
     /**
      * @return All distinct vertices with a timestamp of their earliest reference as a src or trg of an edge
      */
@@ -129,6 +130,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     public DataStream<TemporalVertex> getDegrees() {
         return this.edges
                 .flatMap(new DegreeTypeSeparator(true, true))
+                .keyBy(0)
                 .map(new DegreeMapFunction(true, true));
     }
 
@@ -136,6 +138,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     public DataStream<TemporalVertex> getInDegrees() {
         return this.edges
                 .flatMap(new DegreeTypeSeparator(true, false))
+                .keyBy(0)
                 .map(new DegreeMapFunction(true, false));
     }
 
@@ -143,6 +146,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     public DataStream<TemporalVertex> getOutDegrees() {
         return this.edges
                 .flatMap(new DegreeTypeSeparator(false, true))
+                .keyBy(0)
                 .map(new DegreeMapFunction(false, true));
     }
 
@@ -199,12 +203,12 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
             Long newDegree = values.f1 + degree;
             Long newValidFrom = Math.min(values.f0, validFrom);
             degrees.put(gradoopId, Tuple2.of(newValidFrom, newDegree));
-            Map<String, Object> properties = new HashMap<>();
-            properties.put(typeDegree, newDegree);
+            Properties properties = new Properties();
+            properties.set(typeDegree, newDegree);
             return new TemporalVertex(
                     gradoopId,
                     null,
-                    Properties.createFromMap(properties),
+                    properties,
                     this.graphId,
                     newValidFrom,
                     Long.MAX_VALUE);
@@ -212,29 +216,60 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
 
     }
 
-    @Override
-    public DataStream<Long> numberOfEdges() {
-        return this.edges.map(new MapFunction<TemporalEdge, Long>() {
-            Set<GradoopId> edges = new HashSet<>();
-            @Override
-            public Long map(TemporalEdge temporalEdge) throws Exception {
-                edges.add(temporalEdge.getId());
-                return (long)edges.size();
-            }
-        });
+    public static final class EdgeKeySelector implements KeySelector<TemporalEdge, GradoopId> {
+
+        @Override
+        public GradoopId getKey(TemporalEdge temporalEdge) throws Exception {
+            return temporalEdge.getId();
+        }
     }
 
-    //TODO fix error, maybe problem with parralellism?
+    // TODO: works when parallelism set to 1, figure out how to make it work in parallel
+    // Tried KeyBy but no success
+    // Maybe test if counter++, or Hashset is faster, if parallelism(1) needs to be used anyway
+    @Override
+    public DataStream<Long> numberOfEdges() {
+        return this.edges
+                //.keyBy(new EdgeKeySelector())
+                .map(new EdgeMapper())
+                .setParallelism(1);
+    }
+
+    public static final class EdgeMapper implements MapFunction<TemporalEdge, Long> {
+        HashSet<String> edges;
+        public EdgeMapper() {
+            this.edges = new HashSet<>();
+        }
+
+        @Override
+        public Long map(TemporalEdge temporalEdge) throws Exception {
+            if(!edges.contains(temporalEdge.getId().toString())) {
+                edges.add(temporalEdge.getId().toString());
+            }
+            return (long)this.edges.size();
+        }
+    }
+
+    // TODO: works when parallelism set to 1, figure out how to make it work in parallel
+    // Tried keyBy, but no success
     @Override
     public DataStream<Long> numberOfVertices() {
-        return getVertices().map(new MapFunction<TemporalVertex, Long>() {
-            Set<GradoopId> vertices = new HashSet<>();
-            @Override
-            public Long map(TemporalVertex temporalVertex) throws Exception {
-                vertices.add(temporalVertex.getId());
-                return (long)vertices.size();
-            }
-        });
+        return getVertices()
+                .map(new VertexCountMapper())
+                .setParallelism(1);
+    }
+
+    public static final class VertexCountMapper implements MapFunction<TemporalVertex, Long> {
+        private Long counter;
+
+        public VertexCountMapper() {
+            this.counter = 0L;
+        }
+
+        @Override
+        public Long map(TemporalVertex temporalVertex) throws Exception {
+            return counter++;
+        }
     }
 
     private static final class ReverseEdgeMapper implements MapFunction<TemporalEdge, TemporalEdge> {
@@ -321,4 +356,39 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
             MapFunction<TemporalEdge, TemporalEdge> mapper) {
         return new SimpleTemporalEdgeStream(this.edges.map(mapper), this.context, new GradoopIdSet());
     }
+
+    public static final class NeighborKeySelector implements KeySelector<TemporalEdge, GradoopId> {
+        private final String direction;
+
+        NeighborKeySelector(String direction) {
+            this.direction = direction;
+        }
+
+        @Override
+        public GradoopId getKey(TemporalEdge temporalEdge) throws Exception {
+            if(direction.equals("src")) {
+                return temporalEdge.getSourceId();
+            } else {
+                return temporalEdge.getTargetId();
+            }
+        }
+    }
+    public GradoopSnapshotStream slice(Time size, EdgeDirection direction)
+            throws IllegalArgumentException {
+
+            switch (direction) {
+                case IN:
+                    return new GradoopSnapshotStream(
+                            getEdges().keyBy(new NeighborKeySelector("src")).timeWindow(size));
+                case OUT:
+                    return new GradoopSnapshotStream(
+                            getEdges().keyBy(new NeighborKeySelector("trg")).timeWindow(size));
+                case ALL:
+                    return new GradoopSnapshotStream(
+                            this.undirected().getEdges().keyBy(
+                                    new NeighborKeySelector("src")).timeWindow(size));
+                default:
+                    throw new IllegalArgumentException("Illegal edge direction");
+            }
+        }
 }

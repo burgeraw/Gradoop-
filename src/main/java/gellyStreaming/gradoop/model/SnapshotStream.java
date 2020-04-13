@@ -24,7 +24,6 @@ public class  SnapshotStream<K, EV> {
         this.windowedStream = window;
     }
 
-//TODO incorrect tests
     /**
      *
      * @param initialValue
