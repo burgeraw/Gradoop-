@@ -4,11 +4,11 @@ import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
@@ -50,21 +50,24 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     }
 
     //TODO What if edges/vertices get removed? Only appropriate for edge addition streams?
+    //TODO: Also, is this scalable? MinBy works over 2*E, which might be too much to keep in memory
     /**
      * @return All distinct vertices with a timestamp of their earliest reference as a src or trg of an edge
      */
     @Override
     public DataStream<TemporalVertex> getVertices() {
-        return this.edges.flatMap(new FlatMapFunction<TemporalEdge, Tuple2<GradoopId, Long>>() {
-            @Override
-            public void flatMap(TemporalEdge temporalEdge, Collector<Tuple2<GradoopId, Long>> collector) throws Exception {
-                collector.collect(Tuple2.of(temporalEdge.getSourceId(), temporalEdge.getValidFrom()));
-                collector.collect(Tuple2.of(temporalEdge.getTargetId(), temporalEdge.getValidFrom()));
-            }
-        })
+        return this.edges.flatMap(new VertexFlatMapper())
                 .keyBy(0)
                 .minBy(1)
                 .flatMap(new VertexMapper(this.graphIdSet));
+    }
+
+    private static final class VertexFlatMapper implements FlatMapFunction<TemporalEdge, Tuple2<GradoopId, Long>> {
+        @Override
+        public void flatMap(TemporalEdge temporalEdge, Collector<Tuple2<GradoopId, Long>> collector) {
+            collector.collect(Tuple2.of(temporalEdge.getSourceId(), temporalEdge.getValidFrom()));
+            collector.collect(Tuple2.of(temporalEdge.getTargetId(), temporalEdge.getValidFrom()));
+        }
     }
 
     private static final class VertexMapper implements FlatMapFunction<Tuple2<GradoopId, Long>, TemporalVertex> {
@@ -236,40 +239,45 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     }
 
     public static final class EdgeMapper implements MapFunction<TemporalEdge, Long> {
-        HashSet<String> edges;
+        Long counter;
         public EdgeMapper() {
-            this.edges = new HashSet<>();
-        }
-
-        @Override
-        public Long map(TemporalEdge temporalEdge) throws Exception {
-            if(!edges.contains(temporalEdge.getId().toString())) {
-                edges.add(temporalEdge.getId().toString());
-            }
-            return (long)this.edges.size();
-        }
-    }
-
-    // TODO: works when parallelism set to 1, figure out how to make it work in parallel
-    // Tried keyBy, but no success
-    @Override
-    public DataStream<Long> numberOfVertices() {
-        return getVertices()
-                .map(new VertexCountMapper())
-                .setParallelism(1);
-    }
-
-    public static final class VertexCountMapper implements MapFunction<TemporalVertex, Long> {
-        private Long counter;
-
-        public VertexCountMapper() {
             this.counter = 0L;
         }
 
         @Override
-        public Long map(TemporalVertex temporalVertex) throws Exception {
-            return counter++;
+        public Long map(TemporalEdge temporalEdge) throws Exception {
+            counter++;
+            return counter;
         }
+    }
+
+    // TODO: works when parallelism set to 1, figure out how to make it work in parallel
+    // TODO: Tried keyBy, but no success
+    // TODO: broadcast works but is it scalable? net.time faster than with parallel(1), but seems double work..
+    @Override
+    public DataStream<Long> numberOfVertices() {
+        return this.edges
+                .flatMap(new FlatMapFunction<TemporalEdge, Tuple1<GradoopId>>() {
+                    @Override
+                    public void flatMap(TemporalEdge temporalEdge, Collector<Tuple1<GradoopId>> collector) throws Exception {
+                        collector.collect(Tuple1.of(temporalEdge.getTargetId()));
+                        collector.collect(Tuple1.of(temporalEdge.getSourceId()));
+                    }
+                })
+                //.keyBy(0)
+                //.broadcast()
+                .flatMap(new FlatMapFunction<Tuple1<GradoopId>, Long>() {
+                    HashSet<GradoopId> vertices = new HashSet<>();
+                    @Override
+                    public void flatMap(Tuple1<GradoopId> gradoopId, Collector<Long> collector) throws Exception {
+                        if (!vertices.contains(gradoopId.f0)) {
+                            vertices.add(gradoopId.f0);
+                            collector.collect((long) vertices.size());
+                        }
+                    }
+                })
+                .setParallelism(1)
+                ;
     }
 
     private static final class ReverseEdgeMapper implements MapFunction<TemporalEdge, TemporalEdge> {
@@ -281,8 +289,8 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
 
     public static TemporalEdge reverseEdge(TemporalEdge temporalEdge) {
             String label = temporalEdge.getLabel();
-            GradoopId src = temporalEdge.getSourceId();
-            GradoopId trg = temporalEdge.getTargetId();
+            GradoopId newSrc = temporalEdge.getTargetId();
+            GradoopId newTrg = temporalEdge.getSourceId();
             Properties properties = temporalEdge.getProperties();
             GradoopIdSet graphIds = temporalEdge.getGraphIds();
             Long validFrom = temporalEdge.getValidFrom();
@@ -290,8 +298,8 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
             return new TemporalEdge(
                     GradoopId.get(),
                     label,
-                    src,
-                    trg,
+                    newSrc,
+                    newTrg,
                     properties,
                     graphIds,
                     validFrom,
@@ -325,32 +333,41 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
 
     @Override
     public GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> filterVertices(FilterFunction<TemporalVertex> filter) {
-        DataStream<TemporalEdge> remainingEdges = this.edges.flatMap(
-                new FlatMapFunction<TemporalEdge, TemporalEdge>() {
-                    @Override
-                    public void flatMap(TemporalEdge temporalEdge, Collector<TemporalEdge> collector) throws Exception {
-                        TemporalVertex src = new TemporalVertex(
-                                temporalEdge.getSourceId(),
-                                null,
-                                null,
-                                graphIdSet,
-                                temporalEdge.getValidFrom(),
-                                temporalEdge.getValidTo());
-                        TemporalVertex trg = new TemporalVertex(
-                                temporalEdge.getTargetId(),
-                                null,
-                                null,
-                                graphIdSet,
-                                temporalEdge.getValidFrom(),
-                                temporalEdge.getValidTo());
-                        if(filter.filter(src) && filter.filter(trg)){
-                            collector.collect(temporalEdge);
-                        }
-                    }
-                });
+        DataStream<TemporalEdge> remainingEdges = this.edges
+                .filter(new VertexFilter(filter));
         return new SimpleTemporalEdgeStream(remainingEdges, this.context, new GradoopIdSet());
     }
 
+    private static final class VertexFilter implements FilterFunction<TemporalEdge> {
+        private FilterFunction<TemporalVertex> vertexFilter;
+
+        private VertexFilter(FilterFunction<TemporalVertex> vertexFilter) {
+            this.vertexFilter = vertexFilter;
+        }
+
+        @Override
+        public boolean filter(TemporalEdge temporalEdge) throws Exception {
+            boolean src = vertexFilter.filter(
+                    new TemporalVertex(
+                            temporalEdge.getSourceId(),
+                            null,
+                            null,
+                            temporalEdge.getGraphIds(),
+                            temporalEdge.getValidFrom(),
+                            temporalEdge.getValidTo()));
+            boolean trg = vertexFilter.filter(
+                    new TemporalVertex(
+                            temporalEdge.getTargetId(),
+                            null,
+                            null,
+                            temporalEdge.getGraphIds(),
+                            temporalEdge.getValidFrom(),
+                            temporalEdge.getValidTo()));
+            return src && trg;
+        }
+    }
+
+    //TODO: rewrite to return any type?
     @Override
     public GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> mapEdges(
             MapFunction<TemporalEdge, TemporalEdge> mapper) {
@@ -373,6 +390,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
             }
         }
     }
+
     public GradoopSnapshotStream slice(Time size, EdgeDirection direction)
             throws IllegalArgumentException {
 

@@ -1,8 +1,9 @@
 package gellyStreaming.gradoop.examples;
 
 import gellyStreaming.gradoop.algorithms.ConnectedComponents;
-import gellyStreaming.gradoop.model.GraphStream;
-import gellyStreaming.gradoop.model.SimpleEdgeStream;
+import gellyStreaming.gradoop.oldModel.GraphStream;
+import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
+import gellyStreaming.gradoop.oldModel.SummaryAggregation;
 import gellyStreaming.gradoop.util.DisjointSet;
 import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.FlatMapFunction;
@@ -24,7 +25,7 @@ import java.util.concurrent.TimeUnit;
  * Vertices that belong to the same component have the same component ID.
  * This algorithm computes _weakly_ connected components, i.e. edge direction is ignored.
  * <p>
- * This is a single-pass implementation, which uses a {@link gellyStreaming.gradoop.model.SummaryAggregation} to periodically merge
+ * This is a single-pass implementation, which uses a {@link SummaryAggregation} to periodically merge
  * the partitioned state. For an iterative implementation, see @link IterativeConnectedComponents.
  */
 public class ConnectedComponentsExample implements ProgramDescription {

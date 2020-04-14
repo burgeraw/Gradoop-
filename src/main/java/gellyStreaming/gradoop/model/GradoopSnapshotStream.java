@@ -13,7 +13,7 @@ public class GradoopSnapshotStream {
         this.windowedStream = stream;
     }
 
-
+    
 
 
 }

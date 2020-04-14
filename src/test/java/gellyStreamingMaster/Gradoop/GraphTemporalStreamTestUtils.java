@@ -95,6 +95,7 @@ public class GraphTemporalStreamTestUtils {
                 graphIds,
                 800000000L,
                 9223372036854775807L));
+        prop = new Properties();
         prop.set("value", 13L);
         edges.add(new TemporalEdge(
                 new GradoopId(0,1,(short)0,0),
@@ -105,6 +106,7 @@ public class GraphTemporalStreamTestUtils {
                 graphIds,
                 800000002L,
                 9223372036854775807L));
+        prop = new Properties();
         prop.set("value", 23L);
         edges.add(new TemporalEdge(
                 new GradoopId(0,1,(short)0,0),
@@ -115,6 +117,7 @@ public class GraphTemporalStreamTestUtils {
                 graphIds,
                 800000004L,
                 9223372036854775807L));
+        prop = new Properties();
         prop.set("value", 34L);
         edges.add(new TemporalEdge(
                 new GradoopId(0,1,(short)0,0),
@@ -125,6 +128,7 @@ public class GraphTemporalStreamTestUtils {
                 graphIds,
                 800000006L,
                 9223372036854775807L));
+        prop = new Properties();
         prop.set("value", 35L);
         edges.add(new TemporalEdge(
                 new GradoopId(0,1,(short)0,0),
@@ -135,6 +139,7 @@ public class GraphTemporalStreamTestUtils {
                 graphIds,
                 800000008L,
                 9223372036854775807L));
+        prop = new Properties();
         prop.set("value", 45L);
         edges.add(new TemporalEdge(
                 new GradoopId(0,1,(short)0,0),
@@ -145,6 +150,7 @@ public class GraphTemporalStreamTestUtils {
                 graphIds,
                 800000010L,
                 9223372036854775807L));
+        prop = new Properties();
         prop.set("value", 51L);
         edges.add(new TemporalEdge(
                 new GradoopId(0,1,(short)0,0),

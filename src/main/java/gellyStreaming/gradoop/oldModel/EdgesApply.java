@@ -1,4 +1,4 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop.oldModel;
 
 import org.apache.flink.api.common.functions.Function;
 import org.apache.flink.api.java.tuple.Tuple2;

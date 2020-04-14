@@ -1,7 +1,7 @@
 package gellyStreaming.gradoop.examples;
 
-import gellyStreaming.gradoop.model.GraphStream;
-import gellyStreaming.gradoop.model.SimpleEdgeStream;
+import gellyStreaming.gradoop.oldModel.GraphStream;
+import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
 import gellyStreaming.gradoop.util.MatchingEvent;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.FlatMapFunction;

@@ -1,4 +1,4 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop.oldModel;
 
 import java.io.Serializable;
 import org.apache.flink.api.common.functions.Function;

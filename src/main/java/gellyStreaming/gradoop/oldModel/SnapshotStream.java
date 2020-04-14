@@ -1,8 +1,7 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop.oldModel;
 
 import java.util.Iterator;
 
-import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.FoldFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;

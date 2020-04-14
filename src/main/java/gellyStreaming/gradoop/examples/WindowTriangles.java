@@ -1,7 +1,7 @@
 package gellyStreaming.gradoop.examples;
 
-import gellyStreaming.gradoop.model.EdgesApply;
-import gellyStreaming.gradoop.model.SimpleEdgeStream;
+import gellyStreaming.gradoop.oldModel.EdgesApply;
+import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
 import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -12,7 +12,6 @@ import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.IngestionTimeExtractor;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.streaming.api.windowing.time.Time;

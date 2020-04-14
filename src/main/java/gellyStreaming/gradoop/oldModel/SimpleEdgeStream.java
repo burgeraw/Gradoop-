@@ -1,4 +1,4 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop.oldModel;
 
 
 import org.apache.flink.api.common.functions.FilterFunction;
@@ -6,7 +6,6 @@ import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.functions.KeySelector;
-import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;

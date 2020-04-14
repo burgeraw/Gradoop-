@@ -18,8 +18,8 @@
 
 package gellyStreamingMaster;
 
-import gellyStreaming.gradoop.model.GraphStream;
-import gellyStreaming.gradoop.model.SimpleEdgeStream;
+import gellyStreaming.gradoop.oldModel.GraphStream;
+import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;

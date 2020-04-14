@@ -1,4 +1,4 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop.oldModel;
 
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;

@@ -1,4 +1,4 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop.oldModel;
 
 import org.apache.flink.api.common.functions.*;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;

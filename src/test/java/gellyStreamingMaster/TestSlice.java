@@ -20,10 +20,10 @@ package gellyStreamingMaster;
 
 import java.util.concurrent.TimeUnit;
 
-import gellyStreaming.gradoop.model.EdgesApply;
-import gellyStreaming.gradoop.model.EdgesFold;
-import gellyStreaming.gradoop.model.EdgesReduce;
-import gellyStreaming.gradoop.model.SimpleEdgeStream;
+import gellyStreaming.gradoop.oldModel.EdgesApply;
+import gellyStreaming.gradoop.oldModel.EdgesFold;
+import gellyStreaming.gradoop.oldModel.EdgesReduce;
+import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.graph.EdgeDirection;

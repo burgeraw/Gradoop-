@@ -2,8 +2,8 @@ package gellyStreaming.gradoop.examples;
 
 import gellyStreaming.gradoop.algorithms.BipartitenessCheck;
 import gellyStreaming.gradoop.algorithms.Candidates;
-import gellyStreaming.gradoop.model.GraphStream;
-import gellyStreaming.gradoop.model.SimpleEdgeStream;
+import gellyStreaming.gradoop.oldModel.GraphStream;
+import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
 import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
