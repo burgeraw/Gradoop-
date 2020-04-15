@@ -10,7 +10,7 @@ By Annemarie Burger
 - [Gradoop: Technical Report (2015)](https://www.dropbox.com/s/kg49nz8z3kcfa19/GradoopTR.pdf?dl=0)
 - [Scalability! But at what COST? (2015)](https://www.usenix.org/system/files/conference/hotos15/hotos15-paper-mcsherry.pdf), and  [slides](https://www.usenix.org/system/files/conference/hotos15/hotos15-paper-mcsherry.pdf). Let's keep COST in mind!
 - [Analyzing Extended Property Graphs with Apache Flink (NDA 2016)](https://dbs.uni-leipzig.de/file/EPGM.pdf)
-- [Graph sketches: sparsification, spanners, and subgraphs](https://dl.acm.org/doi/pdf/10.1145/2213556.2213560)
+- [Graph sketches: sparsification, spanners, and subgraphs (Sigmod 2016)](https://dl.acm.org/doi/pdf/10.1145/2213556.2213560)
 
 ## Presentations ##
 - [Approximate Query Library on Flink (Vasiloudis 2018)](https://www.dropbox.com/s/vd4xhamcnbvwfou/Flink%20Seattle%20Meetup.pdf?dl=0) with [code](https://github.com/tlindener/ApproximateQueries/) available
