@@ -1,8 +1,8 @@
-package gellyStreaming.gradoop.algorithms;
+package gellyStreaming.gradoop.oldModel.algorithms;
 
 import gellyStreaming.gradoop.oldModel.EdgesFold;
 import gellyStreaming.gradoop.oldModel.SummaryBulkAggregation;
-import gellyStreaming.gradoop.util.DisjointSet;
+import gellyStreaming.gradoop.oldModel.util.DisjointSet;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.types.NullValue;
 

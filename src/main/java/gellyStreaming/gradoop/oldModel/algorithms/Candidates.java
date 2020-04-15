@@ -1,6 +1,6 @@
-package gellyStreaming.gradoop.algorithms;
+package gellyStreaming.gradoop.oldModel.algorithms;
 
-import gellyStreaming.gradoop.util.SignedVertex;
+import gellyStreaming.gradoop.oldModel.util.SignedVertex;
 import org.apache.flink.api.java.tuple.Tuple2;
 
 import java.io.Serializable;

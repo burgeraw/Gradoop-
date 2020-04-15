@@ -4,8 +4,10 @@ import gellyStreaming.gradoop.oldModel.GraphStream;
 import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
+import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
@@ -18,8 +20,10 @@ import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class Tests {
 
@@ -62,6 +66,7 @@ public class Tests {
     public static void testTemporalGraph() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         GradoopIdSet graphId = new GradoopIdSet();
+        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
         DataStream<TemporalEdge> edges = env.readTextFile("src/main/resources/ml-100k/u.data")
                 .map(new MapFunction<String, TemporalEdge>() {
@@ -91,7 +96,6 @@ public class Tests {
 
         //edgestream.numberOfVertices().print();
 
-        GradoopSnapshotStream thisthing = edgestream.slice(Time.of(5, MINUTES), EdgeDirection.IN );
         JobExecutionResult job = env.execute();
         System.out.println(job.getNetRuntime());
     }

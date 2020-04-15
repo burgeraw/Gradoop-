@@ -1,4 +1,4 @@
-package gellyStreaming.gradoop.util;
+package gellyStreaming.gradoop.oldModel.util;
 
 import java.io.Serializable;
 import java.util.*;

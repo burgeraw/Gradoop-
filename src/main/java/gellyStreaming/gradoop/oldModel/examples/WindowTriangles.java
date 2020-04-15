@@ -1,4 +1,4 @@
-package gellyStreaming.gradoop.examples;
+package gellyStreaming.gradoop.oldModel.examples;
 
 import gellyStreaming.gradoop.oldModel.EdgesApply;
 import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;

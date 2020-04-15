@@ -1,10 +1,10 @@
-package gellyStreaming.gradoop.examples;
+package gellyStreaming.gradoop.oldModel.examples;
 
-import gellyStreaming.gradoop.algorithms.ConnectedComponents;
+import gellyStreaming.gradoop.oldModel.algorithms.ConnectedComponents;
 import gellyStreaming.gradoop.oldModel.GraphStream;
 import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
 import gellyStreaming.gradoop.oldModel.SummaryAggregation;
-import gellyStreaming.gradoop.util.DisjointSet;
+import gellyStreaming.gradoop.oldModel.util.DisjointSet;
 import org.apache.flink.api.common.ProgramDescription;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.FoldFunction;

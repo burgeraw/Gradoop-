@@ -62,7 +62,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
                 .flatMap(new VertexMapper(this.graphIdSet));
     }
 
-    private static final class VertexFlatMapper implements FlatMapFunction<TemporalEdge, Tuple2<GradoopId, Long>> {
+    public static final class VertexFlatMapper implements FlatMapFunction<TemporalEdge, Tuple2<GradoopId, Long>> {
         @Override
         public void flatMap(TemporalEdge temporalEdge, Collector<Tuple2<GradoopId, Long>> collector) {
             collector.collect(Tuple2.of(temporalEdge.getSourceId(), temporalEdge.getValidFrom()));
@@ -70,7 +70,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         }
     }
 
-    private static final class VertexMapper implements FlatMapFunction<Tuple2<GradoopId, Long>, TemporalVertex> {
+    public static final class VertexMapper implements FlatMapFunction<Tuple2<GradoopId, Long>, TemporalVertex> {
         private Set<GradoopId> vertices;
         private GradoopIdSet gradoopIds;
 
@@ -391,20 +391,20 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         }
     }
 
-    public GradoopSnapshotStream slice(Time size, EdgeDirection direction)
+    public GradoopSnapshotStream slice(Time size, EdgeDirection direction, String strategy)
             throws IllegalArgumentException {
 
             switch (direction) {
                 case IN:
                     return new GradoopSnapshotStream(
-                            getEdges().keyBy(new NeighborKeySelector("src")).timeWindow(size));
+                            getEdges().keyBy(new NeighborKeySelector("src")).timeWindow(size), strategy);
                 case OUT:
                     return new GradoopSnapshotStream(
-                            getEdges().keyBy(new NeighborKeySelector("trg")).timeWindow(size));
+                            getEdges().keyBy(new NeighborKeySelector("trg")).timeWindow(size), strategy);
                 case ALL:
                     return new GradoopSnapshotStream(
                             this.undirected().getEdges().keyBy(
-                                    new NeighborKeySelector("src")).timeWindow(size));
+                                    new NeighborKeySelector("src")).timeWindow(size), strategy);
                 default:
                     throw new IllegalArgumentException("Illegal edge direction");
             }
