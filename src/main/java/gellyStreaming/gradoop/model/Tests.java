@@ -5,6 +5,7 @@ import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
+import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.streaming.api.TimeCharacteristic;
@@ -18,12 +19,12 @@ import org.gradoop.common.model.impl.id.GradoopIdSet;
 import org.gradoop.common.model.impl.properties.Properties;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
+import javax.xml.crypto.Data;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.concurrent.TimeUnit.*;
 
 public class Tests {
 
@@ -92,9 +93,11 @@ public class Tests {
                         return temporalEdge.getValidFrom();
                     }
                 });
-        SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges, env, graphId);
 
         //edgestream.numberOfVertices().print();
+        DataStream<TemporalEdge> edges2 = getSampleEdgeStream(env);
+        SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges2, env, null);
+        GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(10, SECONDS), Time.of(1, SECONDS), EdgeDirection.OUT, "EL");
 
         JobExecutionResult job = env.execute();
         System.out.println(job.getNetRuntime());
@@ -103,5 +106,113 @@ public class Tests {
     public static void main(String[] args) throws Exception {
         //testLoadingGraph();
         testTemporalGraph();
+    }
+
+    private static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
+        return env.fromElements(
+                new TemporalEdge(
+                        new GradoopId(0, 1, (short)1, 0),
+                        null,
+                        new GradoopId(0, 1, (short)0, 0),
+                        new GradoopId(0, 2, (short)0, 0),
+                        null,
+                        null,
+                        800000000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 2, (short)1, 0),
+                        null,
+                        new GradoopId(0, 1, (short)0, 0),
+                        new GradoopId(0, 3, (short)0, 0),
+                        null,
+                        null,
+                        800000000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 3, (short)1, 0),
+                        null,
+                        new GradoopId(0, 2, (short)0, 0),
+                        new GradoopId(0, 3, (short)0, 0),
+                        null,
+                        null,
+                        800000000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 4, (short)1, 0),
+                        null,
+                        new GradoopId(0, 1, (short)0, 0),
+                        new GradoopId(0, 4, (short)0, 0),
+                        null,
+                        null,
+                        800001000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 5, (short)1, 0),
+                        null,
+                        new GradoopId(0, 1, (short)0, 0),
+                        new GradoopId(0, 5, (short)0, 0),
+                        null,
+                        null,
+                        800001000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 6, (short)1, 0),
+                        null,
+                        new GradoopId(0, 4, (short)0, 0),
+                        new GradoopId(0, 5, (short)0, 0),
+                        null,
+                        null,
+                        800001000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 7, (short)1, 0),
+                        null,
+                        new GradoopId(0, 1, (short)0, 0),
+                        new GradoopId(0, 6, (short)0, 0),
+                        null,
+                        null,
+                        800002000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 8, (short)1, 0),
+                        null,
+                        new GradoopId(0, 1, (short)0, 0),
+                        new GradoopId(0, 7, (short)0, 0),
+                        null,
+                        null,
+                        800002000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 9, (short)1, 0),
+                        null,
+                        new GradoopId(0, 2, (short)0, 0),
+                        new GradoopId(0, 7, (short)0, 0),
+                        null,
+                        null,
+                        800002000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 10, (short)1, 0),
+                        null,
+                        new GradoopId(0, 7, (short)0, 0),
+                        new GradoopId(0, 8, (short)0, 0),
+                        null,
+                        null,
+                        800003000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 11, (short)1, 0),
+                        null,
+                        new GradoopId(0, 8, (short)0, 0),
+                        new GradoopId(0, 1, (short)0, 0),
+                        null,
+                        null,
+                        800003000L,
+                        Long.MAX_VALUE)).assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
+            @Override
+            public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
+                return temporalEdge.getValidFrom();
+            }
+        });
     }
 }

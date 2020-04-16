@@ -9,7 +9,9 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
 import org.gradoop.common.model.impl.id.GradoopId;
@@ -374,6 +376,22 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         return new SimpleTemporalEdgeStream(this.edges.map(mapper), this.context, new GradoopIdSet());
     }
 
+    public static final class NeighborDoubleKeySelector implements KeySelector<TemporalEdge, Tuple2<GradoopId, GradoopId>> {
+        private final String direction;
+
+        NeighborDoubleKeySelector(String direction) {
+            this.direction = direction;
+        }
+
+        @Override
+        public Tuple2<GradoopId, GradoopId> getKey(TemporalEdge temporalEdge) throws Exception {
+            if(direction.equals("src")) {
+                return Tuple2.of(temporalEdge.getSourceId(), temporalEdge.getTargetId());
+            } else {
+                return Tuple2.of(temporalEdge.getTargetId(), temporalEdge.getSourceId());
+            }
+        }
+    }
     public static final class NeighborKeySelector implements KeySelector<TemporalEdge, GradoopId> {
         private final String direction;
 
@@ -391,20 +409,34 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         }
     }
 
-    public GradoopSnapshotStream slice(Time size, EdgeDirection direction, String strategy)
+
+/*
+keyed on source or target vertex --> good for adjacency list
+ */
+    public GradoopSnapshotStream slice(Time size, Time slide, EdgeDirection direction, String strategy)
             throws IllegalArgumentException {
 
             switch (direction) {
                 case IN:
                     return new GradoopSnapshotStream(
-                            getEdges().keyBy(new NeighborKeySelector("src")).timeWindow(size), strategy);
+                            getEdges()
+                                    .keyBy(new NeighborKeySelector("src"))
+                                    .window(SlidingEventTimeWindows.of(size, slide))
+                            , strategy);
+
                 case OUT:
                     return new GradoopSnapshotStream(
-                            getEdges().keyBy(new NeighborKeySelector("trg")).timeWindow(size), strategy);
+                            getEdges()
+                                    .keyBy(new NeighborKeySelector("trg"))
+                                    .window(SlidingEventTimeWindows.of(size, slide))
+                            , strategy);
                 case ALL:
                     return new GradoopSnapshotStream(
-                            this.undirected().getEdges().keyBy(
-                                    new NeighborKeySelector("src")).timeWindow(size), strategy);
+                            this.undirected()
+                                    .getEdges()
+                                    .keyBy(new NeighborKeySelector("src"))
+                                    .window(SlidingEventTimeWindows.of(size, slide))
+                            , strategy);
                 default:
                     throw new IllegalArgumentException("Illegal edge direction");
             }
