@@ -97,8 +97,8 @@ public class Tests {
         //edgestream.numberOfVertices().print();
         DataStream<TemporalEdge> edges2 = getSampleEdgeStream(env);
         SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges2, env, null);
-        GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(10, SECONDS), Time.of(1, SECONDS), EdgeDirection.OUT, "EL");
-
+        //GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(2, SECONDS), Time.of(1, SECONDS), EdgeDirection.OUT, "EL");
+        GradoopSnapshotStream snapshotStream1 = edgestream.slice2(Time.of(4, SECONDS), Time.of(1, SECONDS), EdgeDirection.IN);
         JobExecutionResult job = env.execute();
         System.out.println(job.getNetRuntime());
     }
@@ -109,6 +109,7 @@ public class Tests {
     }
 
     private static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
+        GradoopIdSet graphId = new GradoopIdSet();
         return env.fromElements(
                 new TemporalEdge(
                         new GradoopId(0, 1, (short)1, 0),
@@ -116,7 +117,7 @@ public class Tests {
                         new GradoopId(0, 1, (short)0, 0),
                         new GradoopId(0, 2, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800000000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -125,7 +126,7 @@ public class Tests {
                         new GradoopId(0, 1, (short)0, 0),
                         new GradoopId(0, 3, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800000000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -134,7 +135,7 @@ public class Tests {
                         new GradoopId(0, 2, (short)0, 0),
                         new GradoopId(0, 3, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800000000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -143,7 +144,7 @@ public class Tests {
                         new GradoopId(0, 1, (short)0, 0),
                         new GradoopId(0, 4, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800001000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -152,7 +153,7 @@ public class Tests {
                         new GradoopId(0, 1, (short)0, 0),
                         new GradoopId(0, 5, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800001000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -161,7 +162,7 @@ public class Tests {
                         new GradoopId(0, 4, (short)0, 0),
                         new GradoopId(0, 5, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800001000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -170,7 +171,7 @@ public class Tests {
                         new GradoopId(0, 1, (short)0, 0),
                         new GradoopId(0, 6, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800002000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -179,7 +180,7 @@ public class Tests {
                         new GradoopId(0, 1, (short)0, 0),
                         new GradoopId(0, 7, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800002000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -188,7 +189,7 @@ public class Tests {
                         new GradoopId(0, 2, (short)0, 0),
                         new GradoopId(0, 7, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800002000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -197,7 +198,7 @@ public class Tests {
                         new GradoopId(0, 7, (short)0, 0),
                         new GradoopId(0, 8, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800003000L,
                         Long.MAX_VALUE),
                 new TemporalEdge(
@@ -206,9 +207,19 @@ public class Tests {
                         new GradoopId(0, 8, (short)0, 0),
                         new GradoopId(0, 1, (short)0, 0),
                         null,
-                        null,
+                        graphId,
                         800003000L,
-                        Long.MAX_VALUE)).assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 12, (short)1, 0),
+                        null,
+                        new GradoopId(0, 6, (short)0, 0),
+                        new GradoopId(0, 5, (short)0, 0),
+                        null,
+                        graphId,
+                        800000000L,
+                        Long.MAX_VALUE))
+                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
             @Override
             public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
                 return temporalEdge.getValidFrom();

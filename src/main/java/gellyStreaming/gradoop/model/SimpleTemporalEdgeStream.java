@@ -9,7 +9,6 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
@@ -82,7 +81,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         }
 
         @Override
-        public void flatMap(Tuple2<GradoopId, Long> tuple, Collector<TemporalVertex> collector) throws Exception {
+        public void flatMap(Tuple2<GradoopId, Long> tuple, Collector<TemporalVertex> collector) {
             if (!vertices.contains(tuple.f0)) {
                 vertices.add(tuple.f0);
                 collector.collect(new TemporalVertex(
@@ -120,7 +119,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
                 new FlatMapFunction<TemporalEdge, TemporalEdge>() {
                     Set<GradoopId> neighbours = new HashSet<>();
                     @Override
-                    public void flatMap(TemporalEdge temporalEdge, Collector<TemporalEdge> collector) throws Exception {
+                    public void flatMap(TemporalEdge temporalEdge, Collector<TemporalEdge> collector) {
                         if(!neighbours.contains(temporalEdge.getTargetId())) {
                             neighbours.add(temporalEdge.getTargetId());
                             collector.collect(temporalEdge);
@@ -247,7 +246,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         }
 
         @Override
-        public Long map(TemporalEdge temporalEdge) throws Exception {
+        public Long map(TemporalEdge temporalEdge) {
             counter++;
             return counter;
         }
@@ -259,19 +258,16 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     @Override
     public DataStream<Long> numberOfVertices() {
         return this.edges
-                .flatMap(new FlatMapFunction<TemporalEdge, Tuple1<GradoopId>>() {
-                    @Override
-                    public void flatMap(TemporalEdge temporalEdge, Collector<Tuple1<GradoopId>> collector) throws Exception {
-                        collector.collect(Tuple1.of(temporalEdge.getTargetId()));
-                        collector.collect(Tuple1.of(temporalEdge.getSourceId()));
-                    }
+                .flatMap((FlatMapFunction<TemporalEdge, Tuple1<GradoopId>>) (temporalEdge, collector) -> {
+                    collector.collect(Tuple1.of(temporalEdge.getTargetId()));
+                    collector.collect(Tuple1.of(temporalEdge.getSourceId()));
                 })
                 //.keyBy(0)
                 //.broadcast()
                 .flatMap(new FlatMapFunction<Tuple1<GradoopId>, Long>() {
                     HashSet<GradoopId> vertices = new HashSet<>();
                     @Override
-                    public void flatMap(Tuple1<GradoopId> gradoopId, Collector<Long> collector) throws Exception {
+                    public void flatMap(Tuple1<GradoopId> gradoopId, Collector<Long> collector) {
                         if (!vertices.contains(gradoopId.f0)) {
                             vertices.add(gradoopId.f0);
                             collector.collect((long) vertices.size());
@@ -284,7 +280,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
 
     private static final class ReverseEdgeMapper implements MapFunction<TemporalEdge, TemporalEdge> {
         @Override
-        public TemporalEdge map(TemporalEdge temporalEdge) throws Exception {
+        public TemporalEdge map(TemporalEdge temporalEdge) {
             return reverseEdge(temporalEdge);
         }
     }
@@ -312,12 +308,9 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     @Override
     public GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> undirected() {
         DataStream<TemporalEdge> undirectedEdges = this.edges.flatMap(
-                new FlatMapFunction<TemporalEdge, TemporalEdge>() {
-                    @Override
-                    public void flatMap(TemporalEdge temporalEdge, Collector<TemporalEdge> collector) throws Exception {
-                        collector.collect(temporalEdge);
-                        collector.collect(reverseEdge(temporalEdge));
-                    }
+                (FlatMapFunction<TemporalEdge, TemporalEdge>) (temporalEdge, collector) -> {
+                    collector.collect(temporalEdge);
+                    collector.collect(reverseEdge(temporalEdge));
                 });
         return new SimpleTemporalEdgeStream(undirectedEdges, this.context, new GradoopIdSet());
     }
@@ -400,7 +393,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         }
 
         @Override
-        public GradoopId getKey(TemporalEdge temporalEdge) throws Exception {
+        public GradoopId getKey(TemporalEdge temporalEdge) {
             if(direction.equals("src")) {
                 return temporalEdge.getSourceId();
             } else {
@@ -440,5 +433,36 @@ keyed on source or target vertex --> good for adjacency list
                 default:
                     throw new IllegalArgumentException("Illegal edge direction");
             }
+    }
+
+    static class GraphIdSelector implements KeySelector<TemporalEdge, GradoopIdSet> {
+
+        @Override
+        public GradoopIdSet getKey(TemporalEdge temporalEdge) {
+            return temporalEdge.getGraphIds();
         }
+    }
+
+    public GradoopSnapshotStream slice2(Time size, Time slide, EdgeDirection direction)
+            throws IllegalArgumentException {
+
+        switch (direction) {
+            case IN:
+            case OUT:
+                return new GradoopSnapshotStream(
+                        getEdges()
+                                .keyBy(new GraphIdSelector())
+                                .window(SlidingEventTimeWindows.of(size, slide))
+                        );
+            case ALL:
+                return new GradoopSnapshotStream(
+                        this.undirected()
+                                .getEdges()
+                                .keyBy(new GraphIdSelector())
+                                .window(SlidingEventTimeWindows.of(size, slide))
+                        );
+            default:
+                throw new IllegalArgumentException("Illegal edge direction");
+        }
+    }
 }
