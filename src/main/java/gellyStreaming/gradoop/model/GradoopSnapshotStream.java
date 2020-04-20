@@ -1,9 +1,11 @@
 package gellyStreaming.gradoop.model;
 
 import org.apache.flink.api.common.functions.AggregateFunction;
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
+import org.apache.flink.api.common.state.*;
+import org.apache.flink.api.common.typeinfo.TypeHint;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
@@ -12,9 +14,7 @@ import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.common.model.impl.id.GradoopIdSet;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 public class GradoopSnapshotStream {
 
@@ -34,10 +34,13 @@ public class GradoopSnapshotStream {
 
         switch (strategy) {
             case "EL":
-                windowedStream.process(new createEL()).print();
+                //windowedStream.process(new createEL()).print();
+                //windowedStream.aggregate(new SetAggregate(), new countEdges<GradoopId>()).print();
+                windowedStream.process(new createStateList()).print();
                 break;
             case "AL":
-                createAL();
+                windowedStream.process(new createAdjacencyStateMap(true, true,
+                        true, true)).print();
                 break;
             case "CSR":
                 createCSR();
@@ -47,7 +50,8 @@ public class GradoopSnapshotStream {
         }
     }
 
-    private static class SetAggregate implements AggregateFunction<TemporalEdge, HashSet<TemporalEdge>, HashSet<TemporalEdge>> {
+    private static class SetAggregate implements AggregateFunction<
+            TemporalEdge, HashSet<TemporalEdge>, HashSet<TemporalEdge>> {
         @Override
         public HashSet<TemporalEdge> createAccumulator() {
             return new HashSet<>();
@@ -76,7 +80,8 @@ public class GradoopSnapshotStream {
         public void process(K key, Context context, Iterable<HashSet<TemporalEdge>> iterable, Collector<String> collector) {
             HashSet<TemporalEdge> edges = new HashSet<>();
             iterable.forEach(edges::addAll);
-            collector.collect("There are "+edges.size()+" edges in "+context.window().toString());
+            collector.collect("There are "+edges.size()+" edges for key:("+key.getClass()+") "+ key +" in "
+                    +context.window().toString());
         }
     }
 
@@ -130,7 +135,7 @@ public class GradoopSnapshotStream {
             public GradoopId key;
             public Set<TemporalEdge> adjacentEdges;
         }
-        private ValueStateDescriptor<SetInWindow> state = new ValueStateDescriptor<>
+        private final ValueStateDescriptor<SetInWindow> state = new ValueStateDescriptor<>
                 ("myStateDescriptor", SetInWindow.class);
 
         @Override
@@ -141,7 +146,10 @@ public class GradoopSnapshotStream {
         }
 
         @Override
-        public void process(GradoopId gradoopId, Context context, Iterable<TemporalEdge> iterable, Collector<String> collector) throws Exception {
+        public void process(GradoopId gradoopId,
+                            Context context,
+                            Iterable<TemporalEdge> iterable,
+                            Collector<String> collector) throws Exception {
             SetInWindow oldState = context.windowState().getState(state).value();
             if(oldState == null) {
                 oldState = new SetInWindow();
@@ -161,7 +169,7 @@ public class GradoopSnapshotStream {
             public GradoopIdSet key;
             public Set<TemporalEdge> adjacentEdges;
         }
-        private ValueStateDescriptor<SetInWindow> state = new ValueStateDescriptor<>
+        private final transient ValueStateDescriptor<SetInWindow> state = new ValueStateDescriptor<>
                 ("myStateDescriptor", SetInWindow.class);
 
         @Override
@@ -172,7 +180,10 @@ public class GradoopSnapshotStream {
         }
 
         @Override
-        public void process(GradoopIdSet key, Context context, Iterable<TemporalEdge> iterable, Collector<String> collector) throws Exception {
+        public void process(GradoopIdSet key,
+                            Context context,
+                            Iterable<TemporalEdge> iterable,
+                            Collector<String> collector) throws Exception {
             SetInWindow oldState = context.windowState().getState(state).value();
             if(oldState == null) {
                 oldState = new SetInWindow();
@@ -187,8 +198,101 @@ public class GradoopSnapshotStream {
         }
     }
 
-    private void createAL() {
+    //Can also be a rich ((flat)map) function
+    private static class createStateList extends ProcessWindowFunction<TemporalEdge, String, GradoopId, TimeWindow> {
 
+        private transient ListState<TemporalEdge> edges;
+        private transient ListStateDescriptor<TemporalEdge> descriptor;
+
+        @Override
+        public void process(GradoopId gradoopId,
+                            Context context,
+                            Iterable<TemporalEdge> iterable,
+                            Collector<String> collector) throws Exception {
+            int counter = 0;
+            for (TemporalEdge temporalEdge : iterable) {
+                edges.add(temporalEdge);
+                counter++;
+            }
+
+            collector.collect("There are "+counter+" edges added to list for key "+gradoopId+" in "
+                    +context.window().toString()+ "\n" +
+                    "This makes the list: "+edges.get().toString());
+        }
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            descriptor =
+                    new ListStateDescriptor<TemporalEdge>(
+                            "edgeList",
+                            TemporalEdge.class);
+            edges = getRuntimeContext().getListState(descriptor);
+        }
+
+        @Override
+        public void clear(Context context) throws Exception {
+            super.clear(context);
+            ListState<TemporalEdge> previous = context.windowState().getListState(descriptor);
+            previous.clear();
+        }
+    }
+
+    private static class createAdjacencyStateMap extends ProcessWindowFunction<TemporalEdge, String, GradoopId, TimeWindow> {
+        private final boolean maintainLabel;
+        private final boolean maintainProperties;
+        private final boolean maintainTimestamps;
+        private final boolean maintainGraphId;
+
+        private transient MapState<Tuple2<GradoopId, GradoopId>, Map<String, Object>> adjacencyList;
+        private transient MapStateDescriptor<Tuple2<GradoopId, GradoopId>, Map<String, Object>> descriptor;
+
+        createAdjacencyStateMap (boolean maintainLabel, boolean maintainProperties,
+                                 boolean maintainTimestamps, boolean maintainGraphId) {
+            this.maintainLabel = maintainLabel;
+            this.maintainProperties = maintainProperties;
+            this.maintainTimestamps = maintainTimestamps;
+            this.maintainGraphId = maintainGraphId;
+        }
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            descriptor =
+                    new MapStateDescriptor<>(
+                            "adjacencyList",
+                            TypeInformation.of(new TypeHint<Tuple2<GradoopId, GradoopId>>() {}),
+                            TypeInformation.of(new TypeHint<Map<String, Object>>() {})
+                    );
+            adjacencyList = getRuntimeContext().getMapState(descriptor);
+        }
+
+        @Override
+        public void clear(Context context) throws Exception {
+            super.clear(context);
+            context.windowState().getMapState(descriptor).clear();
+        }
+
+        @Override
+        public void process(GradoopId gradoopId, Context context, Iterable<TemporalEdge> iterable, Collector<String> collector) throws Exception {
+            for (TemporalEdge edge : iterable){
+                Tuple2<GradoopId, GradoopId> key = Tuple2.of(edge.getSourceId(), edge.getTargetId());
+                Map<String, Object> value = new HashMap<>();
+                if(maintainGraphId) {
+                    value.put("graphId", edge.getGraphIds());
+                }
+                if(maintainLabel) {
+                    value.put("lable", edge.getLabel());
+                }
+                if(maintainProperties) {
+                    value.put("properties", edge.getProperties());
+                }
+                if(maintainTimestamps) {
+                    value.put("validFrom", edge.getValidFrom());
+                    value.put("validTo", edge.getValidTo());
+                }
+                adjacencyList.put(key, value);
+            }
+            collector.collect("The adjacency list for key: "+ gradoopId + " is as follows: "+adjacencyList.entries().toString());
+        }
     }
 
     private void createCSR() {

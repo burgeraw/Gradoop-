@@ -97,8 +97,9 @@ public class Tests {
         //edgestream.numberOfVertices().print();
         DataStream<TemporalEdge> edges2 = getSampleEdgeStream(env);
         SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges2, env, null);
-        //GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(2, SECONDS), Time.of(1, SECONDS), EdgeDirection.OUT, "EL");
-        GradoopSnapshotStream snapshotStream1 = edgestream.slice2(Time.of(4, SECONDS), Time.of(1, SECONDS), EdgeDirection.IN);
+        //GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(4, SECONDS), Time.of(2, SECONDS), EdgeDirection.IN, "EL");
+        GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(4, SECONDS), Time.of(4, SECONDS), EdgeDirection.ALL, "AL");
+        //GradoopSnapshotStream snapshotStream1 = edgestream.slice2(Time.of(4, SECONDS), Time.of(4, SECONDS), EdgeDirection.IN);
         JobExecutionResult job = env.execute();
         System.out.println(job.getNetRuntime());
     }

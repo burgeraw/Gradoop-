@@ -307,13 +307,17 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
 
     @Override
     public GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> undirected() {
-        DataStream<TemporalEdge> undirectedEdges = this.edges.flatMap(
-                (FlatMapFunction<TemporalEdge, TemporalEdge>) (temporalEdge, collector) -> {
-                    collector.collect(temporalEdge);
-                    collector.collect(reverseEdge(temporalEdge));
-                });
+        DataStream<TemporalEdge> undirectedEdges = this.edges.flatMap(new FlatMapFunction<TemporalEdge, TemporalEdge>() {
+            @Override
+            public void flatMap(TemporalEdge temporalEdge, Collector<TemporalEdge> collector) throws Exception {
+                collector.collect(temporalEdge);
+                collector.collect(reverseEdge(temporalEdge));
+            }
+        });
         return new SimpleTemporalEdgeStream(undirectedEdges, this.context, new GradoopIdSet());
     }
+
+
 
     @Override
     public GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> reverse() {
