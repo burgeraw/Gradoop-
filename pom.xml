@@ -63,6 +63,33 @@
         <artifactId>gradoop-temporal</artifactId>
         <version>0.5.1</version>
     </dependency>
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>statefun-flink-core</artifactId>
+        <version>2.0.0</version>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>statefun-sdk</artifactId>
+        <version>2.0.0</version>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>statefun-flink-harness</artifactId>
+        <version>2.0.0</version>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>statefun-flink-io</artifactId>
+        <version>2.0.0</version>
+        <scope>provided</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>statefun-flink-distribution</artifactId>
+        <version>2.0.0</version>
+    </dependency>
+
 
 
 </dependencies>>

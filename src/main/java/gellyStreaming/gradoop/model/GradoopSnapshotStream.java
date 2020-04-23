@@ -1,11 +1,15 @@
 package gellyStreaming.gradoop.model;
 
 import org.apache.flink.api.common.functions.AggregateFunction;
+import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.state.*;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.runtime.state.heap.StateMap;
+import org.apache.flink.runtime.state.heap.StateMapSnapshot;
 import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
@@ -39,12 +43,21 @@ public class GradoopSnapshotStream {
                 windowedStream.process(new createStateList()).print();
                 break;
             case "AL":
-                windowedStream.process(new createAdjacencyStateMap(true, true,
-                        true, true)).print();
+                //windowedStream.process(new createAdjacencyStateMap(true, true,
+                 //       true, true)).writeAsText("output");
+                windowedStream.process(new createAdjacencyStateMap2(false, false, false, false))
+                        .broadcast().flatMap(new FlatMapFunction<MapState, String>() {
+                    @Override
+                    public void flatMap(MapState mapState, Collector<String> collector) throws Exception {
+                        collector.collect(mapState.keys().toString());
+                    }
+                }).writeAsText("output", FileSystem.WriteMode.OVERWRITE);
                 break;
             case "CSR":
                 createCSR();
                 break;
+            case "Stateful" :
+                //windowedStream.
             default:
                 throw new IllegalArgumentException("Illegal state strategy, choose CSR, AL, or EL.");
         }
@@ -292,6 +305,64 @@ public class GradoopSnapshotStream {
                 adjacencyList.put(key, value);
             }
             collector.collect("The adjacency list for key: "+ gradoopId + " is as follows: "+adjacencyList.entries().toString());
+        }
+    }
+
+    private static class createAdjacencyStateMap2 extends ProcessWindowFunction<TemporalEdge, MapState, GradoopId, TimeWindow> {
+        private final boolean maintainLabel;
+        private final boolean maintainProperties;
+        private final boolean maintainTimestamps;
+        private final boolean maintainGraphId;
+
+        private transient MapState<Tuple2<GradoopId, GradoopId>, Map<String, Object>> adjacencyList;
+        private transient MapStateDescriptor<Tuple2<GradoopId, GradoopId>, Map<String, Object>> descriptor;
+
+        createAdjacencyStateMap2 (boolean maintainLabel, boolean maintainProperties,
+                                 boolean maintainTimestamps, boolean maintainGraphId) {
+            this.maintainLabel = maintainLabel;
+            this.maintainProperties = maintainProperties;
+            this.maintainTimestamps = maintainTimestamps;
+            this.maintainGraphId = maintainGraphId;
+        }
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            descriptor =
+                    new MapStateDescriptor<>(
+                            "adjacencyList",
+                            TypeInformation.of(new TypeHint<Tuple2<GradoopId, GradoopId>>() {}),
+                            TypeInformation.of(new TypeHint<Map<String, Object>>() {})
+                    );
+            adjacencyList = getRuntimeContext().getMapState(descriptor);
+        }
+
+        @Override
+        public void clear(Context context) throws Exception {
+            super.clear(context);
+            context.windowState().getMapState(descriptor).clear();
+        }
+
+        @Override
+        public void process(GradoopId gradoopId, Context context, Iterable<TemporalEdge> iterable, Collector<MapState> collector) throws Exception {
+            for (TemporalEdge edge : iterable){
+                Tuple2<GradoopId, GradoopId> key = Tuple2.of(edge.getSourceId(), edge.getTargetId());
+                Map<String, Object> value = new HashMap<>();
+                if(maintainGraphId) {
+                    value.put("graphId", edge.getGraphIds());
+                }
+                if(maintainLabel) {
+                    value.put("lable", edge.getLabel());
+                }
+                if(maintainProperties) {
+                    value.put("properties", edge.getProperties());
+                }
+                if(maintainTimestamps) {
+                    value.put("validFrom", edge.getValidFrom());
+                    value.put("validTo", edge.getValidTo());
+                }
+                adjacencyList.put(key, value);
+            }
+            collector.collect(adjacencyList);
         }
     }
 

@@ -8,6 +8,8 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
+import org.apache.flink.statefun.sdk.Context;
+import org.apache.flink.statefun.sdk.StatefulFunction;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -64,11 +66,11 @@ public class Tests {
 
         // TODO: Oh, please write code as neatly as possible for me to read it fast, so that I can help. Similar to how I transformed it. :)
 
-    public static void testTemporalGraph() throws Exception {
+    public static void testGradoopSnapshotStream() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         GradoopIdSet graphId = new GradoopIdSet();
         env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
-
+/*
         DataStream<TemporalEdge> edges = env.readTextFile("src/main/resources/ml-100k/u.data")
                 .map(new MapFunction<String, TemporalEdge>() {
                     @Override
@@ -88,12 +90,13 @@ public class Tests {
                         );
                     }
                 }).assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
+
                     @Override
                     public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
                         return temporalEdge.getValidFrom();
                     }
                 });
-
+*/
         //edgestream.numberOfVertices().print();
         DataStream<TemporalEdge> edges2 = getSampleEdgeStream(env);
         SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges2, env, null);
@@ -104,9 +107,15 @@ public class Tests {
         System.out.println(job.getNetRuntime());
     }
 
+    public static void testStatefulFunctions() {
+
+    }
+    
+
     public static void main(String[] args) throws Exception {
         //testLoadingGraph();
-        testTemporalGraph();
+        testGradoopSnapshotStream();
+        //testStatefulFunctions();
     }
 
     private static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
@@ -223,6 +232,7 @@ public class Tests {
                 .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
             @Override
             public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
+                MonotonyViolationHandler violationHandler = new IgnoringHandler();
                 return temporalEdge.getValidFrom();
             }
         });
