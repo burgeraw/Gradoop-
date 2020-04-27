@@ -65,6 +65,7 @@ Since you like "triangle counting" problem and want to test Gradoop++ with it; t
 - [Approximate Query Library on Flink (Vasiloudis 2018)](https://www.dropbox.com/s/vd4xhamcnbvwfou/Flink%20Seattle%20Meetup.pdf?dl=0) with [code](https://github.com/tlindener/ApproximateQueries/) available
 - [Single-pass Graph Streaming Analytics with Gelly Streaming (Vasia and Paris 2016)](https://www.dropbox.com/s/9ug1s0emf9aozg8/single-pass-graph-stream-analytics-gelly-streaming.pdf?dl=0)
 - [Spark Streaming and GraphX](http://ictlabs-summer-school.sics.se/2016/slides/spark_streaming_graphx.pdf)
+- [Graph Stream Processing (Paris)](https://www.dropbox.com/s/u2eb52q1e8nvpur/paris-graph-stream-processing.pdf?dl=0)
 
 ## Experiments ##
 - We can use [GraphTides](https://graphtides.github.io/) framework (by Pietzuch) to plug in Gradoop++ and GraphX for proper comparison
