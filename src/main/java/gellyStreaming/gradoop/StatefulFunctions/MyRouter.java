@@ -17,13 +17,16 @@
  */
 package gellyStreaming.gradoop.StatefulFunctions;
 
+import com.google.auto.service.AutoService;
 import gellyStreaming.gradoop.StatefulFunctions.MyMessages.MyInputMessage;
 import org.apache.flink.statefun.sdk.io.Router;
 
+//@AutoService(Router.class)
 final class MyRouter implements Router<MyInputMessage> {
 
   @Override
   public void route(MyInputMessage message, Downstream<MyInputMessage> downstream) {
-    downstream.forward(MyConstants.MY_FUNCTION_TYPE, message.getUserId(), message);
+    downstream.forward(MyConstants.MY_FUNCTION_TYPE, message.getSrcId(), message);
+    downstream.forward(MyConstants.MY_FUNCTION_TYPE, message.getTrgId(), message);
   }
 }

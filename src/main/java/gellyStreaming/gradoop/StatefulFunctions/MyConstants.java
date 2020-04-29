@@ -19,6 +19,7 @@ package gellyStreaming.gradoop.StatefulFunctions;
 
 import gellyStreaming.gradoop.StatefulFunctions.MyMessages.MyInputMessage;
 import gellyStreaming.gradoop.StatefulFunctions.MyMessages.MyOutputMessage;
+import gellyStreaming.gradoop.StatefulFunctions.MyMessages.MyTriangleOutputMessage;
 import org.apache.flink.statefun.sdk.FunctionType;
 import org.apache.flink.statefun.sdk.io.EgressIdentifier;
 import org.apache.flink.statefun.sdk.io.IngressIdentifier;
@@ -28,9 +29,13 @@ final class MyConstants {
       new IngressIdentifier<>(
           MyInputMessage.class, "org.apache.flink.statefun.examples.harness", "in");
 
-  static final EgressIdentifier<MyOutputMessage> RESULT_EGRESS =
+  static final EgressIdentifier<MyOutputMessage> RESULT_EGRESS1 =
       new EgressIdentifier<>(
           "org.apache.flink.statefun.examples.harness", "out", MyOutputMessage.class);
+
+  static final EgressIdentifier<MyTriangleOutputMessage> RESULT_EGRESS =
+        new EgressIdentifier<>(
+                "org.apache.flink.statefun.examples.harness", "out", MyTriangleOutputMessage.class);
 
   static final FunctionType MY_FUNCTION_TYPE =
       new FunctionType("org.apache.flink.statefun.examples.harness", "my-function");

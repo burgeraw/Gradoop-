@@ -21,8 +21,18 @@ import gellyStreaming.gradoop.StatefulFunctions.MyMessages.MyInputMessage;
 import gellyStreaming.gradoop.StatefulFunctions.MyMessages.MyOutputMessage;
 import org.apache.flink.statefun.sdk.Context;
 import org.apache.flink.statefun.sdk.StatefulFunction;
+import org.apache.flink.statefun.sdk.annotations.Persisted;
+import org.apache.flink.statefun.sdk.state.PersistedTable;
+import org.apache.flink.statefun.sdk.state.PersistedValue;
 
 final class MyFunction implements StatefulFunction {
+
+  @Persisted
+  private final PersistedValue<Integer> degree = PersistedValue.of("degree", Integer.class);
+  @Persisted
+  private final PersistedTable<String, String> incomingEdges = PersistedTable.of("inList", String.class, String.class);
+  @Persisted
+  private final PersistedTable<String, String> outgoingEdges = PersistedTable.of("outList", String.class, String.class);
 
   @Override
   public void invoke(Context context, Object input) {
@@ -30,8 +40,15 @@ final class MyFunction implements StatefulFunction {
       throw new IllegalArgumentException("Unknown message received " + input);
     }
     MyInputMessage in = (MyInputMessage) input;
-    MyOutputMessage out = new MyOutputMessage(in.getUserId(), in.getMessage());
+    if(in.getSrcId().equals(context.self().id())) {
+      outgoingEdges.set(in.getTrgId(), in.getValue());
+    } else if (in.getTrgId().equals(context.self().id())) {
+      incomingEdges.set(in.getSrcId(), in.getValue());
+    }
+    Integer newDegree = degree.getOrDefault(0) + 1;
+    degree.set(newDegree);
+    MyOutputMessage out = new MyOutputMessage(context.self().id(), ""+degree.get(), incomingEdges.entries().toString(), outgoingEdges.entries().toString());
 
-    context.send(MyConstants.RESULT_EGRESS, out);
+    context.send(MyConstants.RESULT_EGRESS1, out);
   }
 }

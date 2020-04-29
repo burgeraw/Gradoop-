@@ -1,43 +1,51 @@
 package gellyStreaming.gradoop.StatefulFunctions;
 
 import org.apache.flink.statefun.flink.harness.Harness;
-import org.apache.flink.statefun.flink.harness.io.SerializableSupplier;
-import org.apache.flink.util.StringUtils;
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
 
-import javax.annotation.Nonnull;
-import java.util.concurrent.ThreadLocalRandom;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Iterator;
+import java.util.stream.Stream;
 
 public class Test {
     public static void main(String[] args) throws Exception {
-         Harness harness =
+
+        Harness harness =
                     new Harness()
                             .withKryoMessageSerializer()
-                            .withSupplyingIngress(MyConstants.REQUEST_INGRESS, new MessageGenerator())
-                            .withPrintingEgress(MyConstants.RESULT_EGRESS);
+                            .withPrintingEgress(MyConstants.RESULT_EGRESS)
+                            .withFlinkSourceFunction(MyConstants.REQUEST_INGRESS, new EdgeGenerator())
+                 ;
          harness.start();
     }
 
-        /** generate a random message, once a second a second. */
-        private static final class MessageGenerator
-                implements SerializableSupplier<MyMessages.MyInputMessage> {
+    private static final class EdgeGenerator implements SourceFunction<MyMessages.MyInputMessage> {
 
-            private static final long serialVersionUID = 1;
+        private volatile boolean isRunning = true;
 
-            @Override
-            public MyMessages.MyInputMessage get() {
+
+        @Override
+        public void run(SourceContext<MyMessages.MyInputMessage> sourceContext) throws Exception {
+            Stream<String> lines = Files.lines(Path.of("src\\main\\resources\\aves-sparrow-social.edges"));
+            Iterator<String> it = lines.iterator();
+            while(isRunning && it.hasNext()) {
                 try {
-                    Thread.sleep(1_000);
+                    Thread.sleep(0_001);
                 } catch (InterruptedException e) {
                     throw new RuntimeException("Interrupted", e);
                 }
-                return randomMessage();
+                String line = it.next();
+                String[] values = line.split(" ");
+                sourceContext.collect(new MyMessages.MyInputMessage(
+                        values[0],values[1], values[2]));
             }
+            cancel();
+        }
 
-            @Nonnull
-            private MyMessages.MyInputMessage randomMessage() {
-                final ThreadLocalRandom random = ThreadLocalRandom.current();
-                final String userId = StringUtils.generateRandomAlphanumericString(random, 2);
-                return new MyMessages.MyInputMessage(userId, "hello " + userId);
-            }
+        @Override
+        public void cancel() {
+            isRunning = false;
         }
     }
+}
