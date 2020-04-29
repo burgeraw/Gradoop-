@@ -5,13 +5,15 @@ By Annemarie Burger
 - [KTH Thesis of Gelly-streaming (2015)](http://www.diva-portal.org/smash/get/diva2:830662/FULLTEXT01.pdf)
 
 ## Papers ##
-Annemarie, let's keep a record of related papers to your thesis here. Everything you read and is related please insert it. 
 
-CAUTION! Aim for credible (ideally full) research papers from top venues of DB field, namely SIGMOD, VLDB, ICDE, EDBT, KDD.
+Aim for credible (ideally full) research papers from top venues of DB field, namely SIGMOD, VLDB, ICDE, EDBT, KDD.
 
 Since you like "triangle counting" problem and want to test Gradoop++ with it; the goal of the thesis can be twofold:
 
 1 -- Create a solid prototype Gradoop++ system that does graph stream processing on windows
+
+Structure idea: Windowed edge stream (Flink) -> graph algorithm (Stateful Functions) -> aggregate results + graph sketches (Flink)
+
      Subgoals
      
      1.1 -- StateACC inside the prescribed window (time-based or count-based) accurately maintained. With AL, EL and CSR format.
@@ -60,12 +62,12 @@ Since you like "triangle counting" problem and want to test Gradoop++ with it; t
 - [Graph Stream Algorithms: A survey (2014)](https://people.cs.umass.edu/~mcgregor/papers/13-graphsurvey.pdf)
 - [Graph sketches: sparsification, spanners, and subgraphs (Sigmod 2016)](https://dl.acm.org/doi/pdf/10.1145/2213556.2213560)
 
-
 ## Presentations ##
 - [Approximate Query Library on Flink (Vasiloudis 2018)](https://www.dropbox.com/s/vd4xhamcnbvwfou/Flink%20Seattle%20Meetup.pdf?dl=0) with [code](https://github.com/tlindener/ApproximateQueries/) available
 - [Single-pass Graph Streaming Analytics with Gelly Streaming (Vasia and Paris 2016)](https://www.dropbox.com/s/9ug1s0emf9aozg8/single-pass-graph-stream-analytics-gelly-streaming.pdf?dl=0)
 - [Spark Streaming and GraphX](http://ictlabs-summer-school.sics.se/2016/slides/spark_streaming_graphx.pdf)
 - [Graph Stream Processing (Paris)](https://www.dropbox.com/s/u2eb52q1e8nvpur/paris-graph-stream-processing.pdf?dl=0)
+- [Flink forward presentation: Deep dive into Stateful Functions](https://www.youtube.com/watch?v=tuSylBadNSo&list=PLDX4T_cnKjD0ngnBSU-bYGfgVv17MiwA7&index=22)
 
 ## Experiments ##
 - We can use [GraphTides](https://graphtides.github.io/) framework (by Pietzuch) to plug in Gradoop++ and GraphX for proper comparison
