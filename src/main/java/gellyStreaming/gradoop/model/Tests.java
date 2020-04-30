@@ -2,31 +2,47 @@ package gellyStreaming.gradoop.model;
 
 import gellyStreaming.gradoop.oldModel.GraphStream;
 import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
+import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
-import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
-import org.apache.flink.statefun.sdk.Context;
-import org.apache.flink.statefun.sdk.StatefulFunction;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
+import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
+import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.triggers.EventTimeTrigger;
+import org.apache.flink.streaming.api.windowing.triggers.Trigger;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.streaming.api.windowing.windows.Window;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
+import org.apache.flink.streaming.connectors.kafka.KafkaSerializationSchema;
+import org.apache.flink.table.runtime.aggregate.ProcessFunctionWithCleanupState;
 import org.apache.flink.types.NullValue;
+import org.apache.flink.util.Collector;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.common.model.impl.id.GradoopIdSet;
-import org.gradoop.common.model.impl.properties.Properties;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
-import javax.xml.crypto.Data;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Properties;
 
-import static java.util.concurrent.TimeUnit.*;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class Tests {
 
@@ -107,15 +123,62 @@ public class Tests {
         System.out.println(job.getNetRuntime());
     }
 
-    public static void testStatefulFunctions() {
+    public static void testStatefulFunctions(String[] args) throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        GradoopIdSet graphId = new GradoopIdSet();
+        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
+        String outputTopic = "flink_output";
+        KafkaSerializationSchema<List<TemporalEdge>> schema = new KafkaSerializationSchema<List<TemporalEdge>>() {
+            @Override
+            public ProducerRecord<byte[], byte[]> serialize(List<TemporalEdge> temporalEdges, @Nullable Long aLong) {
+                return null;
+            }
+        };
+
+        Properties properties = new Properties();
+        properties.setProperty("bootstrap.servers", "localhost:9092");
+
+        FlinkKafkaProducer<List<TemporalEdge>> flinkKafkaProducer
+                = new FlinkKafkaProducer<List<TemporalEdge>>(outputTopic,schema, properties, FlinkKafkaProducer.Semantic.EXACTLY_ONCE);
+
+        DataStream<TemporalEdge> edges2 = getSampleEdgeStream(env);
+        SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges2, env, graphId);
+        edgestream
+                .getEdges()
+                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
+                    @Override
+                    public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
+                        return temporalEdge.getValidFrom();
+                    }
+                })
+                .keyBy(
+                (KeySelector<TemporalEdge, GradoopId>) temporalEdge -> temporalEdge.getSourceId())
+                .window(SlidingEventTimeWindows.of(Time.of(2, SECONDS),Time.of(2, SECONDS)))
+                .process(new ProcessWindowFunction<TemporalEdge, List<TemporalEdge>, GradoopId, TimeWindow>() {
+                    @Override
+                    public void process(GradoopId gradoopId, Context context, Iterable<TemporalEdge> iterable, Collector<List<TemporalEdge>> collector) throws Exception {
+                        List<TemporalEdge> edges = new ArrayList<>();
+                        for(TemporalEdge edge: iterable) {
+                            edges.add(edge);
+                        }
+                        System.out.println("In "+context.window().toString()+" there are edges: "+edges.toString());
+                        System.out.println("___________");
+                        if(edges.size()>0) {
+                            collector.collect(edges);
+                        }
+                    }
+                })
+                .addSink(flinkKafkaProducer)
+                ;
+        env.execute();
     }
     
 
     public static void main(String[] args) throws Exception {
         //testLoadingGraph();
-        testGradoopSnapshotStream();
-        //testStatefulFunctions();
+        //testGradoopSnapshotStream();
+        testStatefulFunctions(args);
     }
 
     private static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
@@ -227,7 +290,7 @@ public class Tests {
                         new GradoopId(0, 5, (short)0, 0),
                         null,
                         graphId,
-                        800000000L,
+                        800003000L,
                         Long.MAX_VALUE))
                 .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
             @Override
