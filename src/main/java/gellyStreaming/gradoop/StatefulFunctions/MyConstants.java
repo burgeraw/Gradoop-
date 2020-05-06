@@ -29,6 +29,10 @@ final class MyConstants {
       new IngressIdentifier<>(
           MyInputMessage.class, "org.apache.flink.statefun.examples.harness", "in");
 
+  static final IngressIdentifier<MyMessages.MyInputMessage2> REQUEST_INGRESS2 =
+          new IngressIdentifier<>(
+                  MyMessages.MyInputMessage2.class, "org.apache.flink.statefun.examples.harness", "in");
+
   static final EgressIdentifier<MyOutputMessage> RESULT_EGRESS1 =
       new EgressIdentifier<>(
           "org.apache.flink.statefun.examples.harness", "out", MyOutputMessage.class);

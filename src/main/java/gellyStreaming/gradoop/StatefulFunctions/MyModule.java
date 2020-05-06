@@ -28,6 +28,7 @@ public class MyModule implements StatefulFunctionModule {
   public void configure(Map<String, String> globalConfiguration, Binder binder) {
     binder.bindIngressRouter(MyConstants.REQUEST_INGRESS, new MyRouter());
     //binder.bindFunctionProvider(MyConstants.MY_FUNCTION_TYPE, unused -> new MyFunction());
+    //binder.bindIngressRouter(MyConstants.REQUEST_INGRESS2, new MyRouter());
     binder.bindFunctionProvider(MyConstants.MY_FUNCTION_TYPE, unused -> new MyTriangleCountingFunction());
   }
 }

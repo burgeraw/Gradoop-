@@ -1,5 +1,7 @@
 package gellyStreaming.gradoop.model;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import gellyStreaming.gradoop.oldModel.GraphStream;
 import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
 import org.apache.flink.api.common.ExecutionConfig;
@@ -37,6 +39,7 @@ import org.gradoop.common.model.impl.id.GradoopIdSet;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import javax.annotation.Nullable;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -173,12 +176,74 @@ public class Tests {
                 ;
         env.execute();
     }
-    
+
+    public static class ProducerStringSerializationSchema implements KafkaSerializationSchema<String>{
+
+        private String topic;
+
+        public ProducerStringSerializationSchema(String topic) {
+            super();
+            this.topic = topic;
+        }
+
+        @Override
+        public ProducerRecord<byte[], byte[]> serialize(String element, Long timestamp) {
+            return new ProducerRecord<byte[], byte[]>(topic, element.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    public static class ObjSerializationSchema implements KafkaSerializationSchema<List<String>>{
+
+        private String topic;
+        private ObjectMapper mapper;
+
+        ObjSerializationSchema(String topic) {
+            super();
+            this.topic = topic;
+        }
+
+        @Override
+        public ProducerRecord<byte[], byte[]> serialize(List<String> obj, Long timestamp) {
+            byte[] b = null;
+            if (mapper == null) {
+                mapper = new ObjectMapper();
+            }
+            try {
+                b= mapper.writeValueAsBytes(obj);
+            } catch (JsonProcessingException e) {
+                System.out.println(e);
+            }
+            return new ProducerRecord<byte[], byte[]>(topic, b);
+        }
+
+    }
+
+    public static void testKafkaOutput() throws Exception {
+        String kafkaTopic = "TOPIC-IN";
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        Properties properties = new Properties();
+        properties.setProperty("bootstrap.servers", "localhost:9092");
+        KafkaSerializationSchema<String> schema = new ProducerStringSerializationSchema(kafkaTopic);
+        //KafkaSerializationSchema<List<String>> schema = new ObjSerializationSchema(kafkaTopic);
+
+        FlinkKafkaProducer<String> kafkaProducer =
+                new FlinkKafkaProducer<String>(kafkaTopic,
+                        schema,
+                        properties,
+                        FlinkKafkaProducer.Semantic.EXACTLY_ONCE);
+
+        DataStream<String> edges = env.readTextFile("src/main/resources/aves-sparrow-social.edges");
+        edges.addSink(kafkaProducer);
+        env.execute();
+
+
+    }
 
     public static void main(String[] args) throws Exception {
         //testLoadingGraph();
         //testGradoopSnapshotStream();
-        testStatefulFunctions(args);
+        //testStatefulFunctions(args);
+        testKafkaOutput();
     }
 
     private static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {

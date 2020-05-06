@@ -29,4 +29,5 @@ final class MyRouter implements Router<MyInputMessage> {
     downstream.forward(MyConstants.MY_FUNCTION_TYPE, message.getSrcId(), message);
     downstream.forward(MyConstants.MY_FUNCTION_TYPE, message.getTrgId(), message);
   }
+
 }

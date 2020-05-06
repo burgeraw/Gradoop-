@@ -42,6 +42,20 @@ final class MyMessages {
     String getValue() { return value; }
   }
 
+  static final class MyInputMessage2 {
+    private final String srcId;
+    private final String trgId;
+
+    MyInputMessage2(String srcId, String trgId) {
+      this.srcId = srcId;
+      this.trgId = trgId;
+    }
+
+    String getSrcId() { return srcId;}
+
+    String getTrgId() { return trgId;}
+  }
+
   static final class CheckIfTriangle {
     private final Iterable<String> potentialTriangles;
 
