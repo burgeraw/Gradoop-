@@ -8,8 +8,6 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.runtime.state.heap.StateMap;
-import org.apache.flink.runtime.state.heap.StateMapSnapshot;
 import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
@@ -351,7 +349,7 @@ public class GradoopSnapshotStream {
                     value.put("graphId", edge.getGraphIds());
                 }
                 if(maintainLabel) {
-                    value.put("lable", edge.getLabel());
+                    value.put("label", edge.getLabel());
                 }
                 if(maintainProperties) {
                     value.put("properties", edge.getProperties());

@@ -44,7 +44,8 @@ public class Test {
         Harness harness =
                     new Harness()
                             .withKryoMessageSerializer()
-                            .withPrintingEgress(MyConstants.RESULT_EGRESS)
+                            //.withPrintingEgress(MyConstants.RESULT_EGRESS)
+                            .withPrintingEgress(MyConstants.RESULT_EGRESS1)
                             .withFlinkSourceFunction(MyConstants.REQUEST_INGRESS, new EdgeGenerator())
                             //.withFlinkSourceFunction(MyConstants.REQUEST_INGRESS, new KafkaReader())
 

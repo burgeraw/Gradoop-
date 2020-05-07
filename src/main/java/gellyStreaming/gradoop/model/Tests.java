@@ -1,49 +1,27 @@
 package gellyStreaming.gradoop.model;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import gellyStreaming.gradoop.oldModel.GraphStream;
 import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
-import org.apache.flink.api.common.ExecutionConfig;
+import gellyStreaming.gradoop.partitioner.DBHPartitioner;
+import gellyStreaming.gradoop.partitioner.TempEdgeKeySelector;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.serialization.SimpleStringSchema;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.java.functions.KeySelector;
-import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
-import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
-import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
-import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.streaming.api.windowing.triggers.EventTimeTrigger;
-import org.apache.flink.streaming.api.windowing.triggers.Trigger;
-import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
-import org.apache.flink.streaming.api.windowing.windows.Window;
-import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
-import org.apache.flink.streaming.connectors.kafka.KafkaSerializationSchema;
-import org.apache.flink.table.runtime.aggregate.ProcessFunctionWithCleanupState;
 import org.apache.flink.types.NullValue;
-import org.apache.flink.util.Collector;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.common.model.impl.id.GradoopIdSet;
+import org.gradoop.common.model.impl.properties.Properties;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
-import javax.annotation.Nullable;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Properties;
+import java.util.HashMap;
+import java.util.Map;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -120,133 +98,32 @@ public class Tests {
         DataStream<TemporalEdge> edges2 = getSampleEdgeStream(env);
         SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges2, env, null);
         //GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(4, SECONDS), Time.of(2, SECONDS), EdgeDirection.IN, "EL");
-        GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(4, SECONDS), Time.of(4, SECONDS), EdgeDirection.ALL, "AL");
-        //GradoopSnapshotStream snapshotStream1 = edgestream.slice2(Time.of(4, SECONDS), Time.of(4, SECONDS), EdgeDirection.IN);
+        //GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(4, SECONDS), Time.of(4, SECONDS), EdgeDirection.ALL, "AL");
+        GradoopSnapshotStream snapshotStream1 = edgestream.slice2(Time.of(4, SECONDS), Time.of(4, SECONDS), EdgeDirection.IN);
         JobExecutionResult job = env.execute();
         System.out.println(job.getNetRuntime());
     }
 
-    public static void testStatefulFunctions(String[] args) throws Exception {
+    public static void testPartitioner() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        GradoopIdSet graphId = new GradoopIdSet();
-        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
-
-        String outputTopic = "flink_output";
-        KafkaSerializationSchema<List<TemporalEdge>> schema = new KafkaSerializationSchema<List<TemporalEdge>>() {
-            @Override
-            public ProducerRecord<byte[], byte[]> serialize(List<TemporalEdge> temporalEdges, @Nullable Long aLong) {
-                return null;
-            }
-        };
-
-        Properties properties = new Properties();
-        properties.setProperty("bootstrap.servers", "localhost:9092");
-
-        FlinkKafkaProducer<List<TemporalEdge>> flinkKafkaProducer
-                = new FlinkKafkaProducer<List<TemporalEdge>>(outputTopic,schema, properties, FlinkKafkaProducer.Semantic.EXACTLY_ONCE);
-
         DataStream<TemporalEdge> edges2 = getSampleEdgeStream(env);
-        SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges2, env, graphId);
-        edgestream
-                .getEdges()
-                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
-                    @Override
-                    public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
-                        return temporalEdge.getValidFrom();
-                    }
-                })
-                .keyBy(
-                (KeySelector<TemporalEdge, GradoopId>) temporalEdge -> temporalEdge.getSourceId())
-                .window(SlidingEventTimeWindows.of(Time.of(2, SECONDS),Time.of(2, SECONDS)))
-                .process(new ProcessWindowFunction<TemporalEdge, List<TemporalEdge>, GradoopId, TimeWindow>() {
-                    @Override
-                    public void process(GradoopId gradoopId, Context context, Iterable<TemporalEdge> iterable, Collector<List<TemporalEdge>> collector) throws Exception {
-                        List<TemporalEdge> edges = new ArrayList<>();
-                        for(TemporalEdge edge: iterable) {
-                            edges.add(edge);
-                        }
-                        System.out.println("In "+context.window().toString()+" there are edges: "+edges.toString());
-                        System.out.println("___________");
-                        if(edges.size()>0) {
-                            collector.collect(edges);
-                        }
-                    }
-                })
-                .addSink(flinkKafkaProducer)
-                ;
+        DataStream<TemporalEdge> edges3 = getMovieEdges(env);
+        env.setParallelism(1); //WHY?
+        edges3
+                .partitionCustom(new DBHPartitioner<GradoopId>(
+                        new TempEdgeKeySelector<GradoopId>(0),4),
+                        new TempEdgeKeySelector<GradoopId>(0))
+                .writeAsText("out", FileSystem.WriteMode.OVERWRITE).setParallelism(4);
         env.execute();
-    }
-
-    public static class ProducerStringSerializationSchema implements KafkaSerializationSchema<String>{
-
-        private String topic;
-
-        public ProducerStringSerializationSchema(String topic) {
-            super();
-            this.topic = topic;
-        }
-
-        @Override
-        public ProducerRecord<byte[], byte[]> serialize(String element, Long timestamp) {
-            return new ProducerRecord<byte[], byte[]>(topic, element.getBytes(StandardCharsets.UTF_8));
-        }
-    }
-
-    public static class ObjSerializationSchema implements KafkaSerializationSchema<List<String>>{
-
-        private String topic;
-        private ObjectMapper mapper;
-
-        ObjSerializationSchema(String topic) {
-            super();
-            this.topic = topic;
-        }
-
-        @Override
-        public ProducerRecord<byte[], byte[]> serialize(List<String> obj, Long timestamp) {
-            byte[] b = null;
-            if (mapper == null) {
-                mapper = new ObjectMapper();
-            }
-            try {
-                b= mapper.writeValueAsBytes(obj);
-            } catch (JsonProcessingException e) {
-                System.out.println(e);
-            }
-            return new ProducerRecord<byte[], byte[]>(topic, b);
-        }
-
-    }
-
-    public static void testKafkaOutput() throws Exception {
-        String kafkaTopic = "TOPIC-IN";
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        Properties properties = new Properties();
-        properties.setProperty("bootstrap.servers", "localhost:9092");
-        KafkaSerializationSchema<String> schema = new ProducerStringSerializationSchema(kafkaTopic);
-        //KafkaSerializationSchema<List<String>> schema = new ObjSerializationSchema(kafkaTopic);
-
-        FlinkKafkaProducer<String> kafkaProducer =
-                new FlinkKafkaProducer<String>(kafkaTopic,
-                        schema,
-                        properties,
-                        FlinkKafkaProducer.Semantic.EXACTLY_ONCE);
-
-        DataStream<String> edges = env.readTextFile("src/main/resources/aves-sparrow-social.edges");
-        edges.addSink(kafkaProducer);
-        env.execute();
-
-
     }
 
     public static void main(String[] args) throws Exception {
         //testLoadingGraph();
         //testGradoopSnapshotStream();
-        //testStatefulFunctions(args);
-        testKafkaOutput();
+        testPartitioner();
     }
 
-    private static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
+    static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
         GradoopIdSet graphId = new GradoopIdSet();
         return env.fromElements(
                 new TemporalEdge(
@@ -356,6 +233,24 @@ public class Tests {
                         null,
                         graphId,
                         800003000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 13, (short)1, 0),
+                        null,
+                        new GradoopId(0, 8, (short)0, 0),
+                        new GradoopId(0, 1, (short)0, 0),
+                        null,
+                        graphId,
+                        800003000L,
+                        Long.MAX_VALUE),
+                new TemporalEdge(
+                        new GradoopId(0, 14, (short)1, 0),
+                        null,
+                        new GradoopId(0, 8, (short)0, 0),
+                        new GradoopId(0, 1, (short)0, 0),
+                        null,
+                        graphId,
+                        800003000L,
                         Long.MAX_VALUE))
                 .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
             @Override
@@ -364,5 +259,39 @@ public class Tests {
                 return temporalEdge.getValidFrom();
             }
         });
+    }
+
+    static DataStream<TemporalEdge> getMovieEdges(StreamExecutionEnvironment env) {
+        GradoopIdSet graphId = new GradoopIdSet();
+        DataStream<TemporalEdge> edges = env.readTextFile("src/main/resources/ml-100k/u.data")
+                .map(new MapFunction<String, TemporalEdge>() {
+                    @Override
+                    public TemporalEdge map(String s) throws Exception {
+                        String[] values = s.split("\t");
+                        Map<String, Object> properties = new HashMap<>();
+                        properties.put("rating", values[2]);
+
+                        return new TemporalEdge(GradoopId.get(),
+                                "watched",
+                                new GradoopId(0, Integer.parseInt(values[0]), (short)0,0),
+                                new GradoopId(0, Integer.parseInt(values[1]), (short)1,0),
+                                Properties.createFromMap(properties),
+                                graphId,
+                                Long.parseLong(values[3]), // (valid until) starting time
+                                Long.MAX_VALUE             //               ending   time
+                        );
+                    }
+                })
+                /*
+                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
+
+                    @Override
+                    public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
+                        return temporalEdge.getValidFrom();
+                    }
+                })
+                */
+                ;
+        return edges;
     }
 }
