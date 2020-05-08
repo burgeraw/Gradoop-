@@ -1,21 +1,19 @@
 package gellyStreaming.gradoop.partitioner;
 
 import org.apache.flink.api.common.functions.Partitioner;
-import org.apache.flink.types.NullValue;
 
 import java.util.Random;
 
 public class DBHPartitioner<T> implements Partitioner<T> {
     private static final long serialVersionUID = 1L;
-    CustomKeySelector keySelector;
-
+    private final CustomKeySelector<Long, String> keySelector;
     private final int k;
-    StoredVertexPartitionState currentState;
+    private final StoredVertexPartitionState currentState;
     private static final int MAX_SHRINK = 100;
-    private double seed;
-    private int shrink;
+    private final double seed;
+    private final int shrink;
 
-    public DBHPartitioner(CustomKeySelector keySelector, int k)
+    public DBHPartitioner(CustomKeySelector<Long, String> keySelector, int k)
     {
         this.keySelector = keySelector;
         this.k= k;
@@ -78,12 +76,11 @@ public class DBHPartitioner<T> implements Partitioner<T> {
 
         //UPDATE RECORDS
         if (currentState.getClass() == StoredVertexPartitionState.class){
-            StoredVertexPartitionState cord_state = (StoredVertexPartitionState) currentState;
+            StoredVertexPartitionState cord_state = currentState;
             //NEW UPDATE RECORDS RULE TO UPFDATE THE SIZE OF THE PARTITIONS EXPRESSED AS THE NUMBER OF VERTICES THEY CONTAINS
             if (!first_vertex.hasReplicaInPartition(machine_id)){ first_vertex.addPartition(machine_id); cord_state.incrementMachineLoadVertices(machine_id);}
             if (!second_vertex.hasReplicaInPartition(machine_id)){ second_vertex.addPartition(machine_id); cord_state.incrementMachineLoadVertices(machine_id);}
-        }
-        else{
+        } else {
             //1-UPDATE RECORDS
             if (!first_vertex.hasReplicaInPartition(machine_id)){
                 first_vertex.addPartition(machine_id);

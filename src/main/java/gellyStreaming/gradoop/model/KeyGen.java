@@ -7,6 +7,13 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
 
+/*
+Code to generate keys to use for the partitioner. Use simple 0 to x causes keys to be grouped together
+in key groups when using the keyBy on the stream, therefor the partitionIDs/keys need to be so that
+the build-in Flink hash does not group them together.
+0-7 can be represented using: [1, 2, 4, 6, 9, 10, 11, 22]
+ */
+
 public class KeyGen
 {
     private int partitions;

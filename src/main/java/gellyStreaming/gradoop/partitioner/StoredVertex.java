@@ -19,8 +19,10 @@ public class StoredVertex implements Serializable {
     }
 
     public void addPartition(int m){
-        if (m==-1){ System.out.println("ERROR! record.addPartition(-1)"); System.exit(-1);}
-        partitions.add( (byte) m);
+        if (m==-1) {
+            System.out.println("ERROR! record.addPartition(-1)"); System.exit(-1);
+        }
+        partitions.add((byte) m);
     }
 
     public void addAll(TreeSet<Byte> tree){
