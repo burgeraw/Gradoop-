@@ -113,8 +113,8 @@ public class Tests {
 
     public static void testPartitioner() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        int numberOfPartitions = 4;
-        env.setParallelism(4);
+        int numberOfPartitions = 8;
+        env.setParallelism(numberOfPartitions);
         //nv.setMaxParallelism(4);
         DataStream<Edge<Long, String>> edges = getMovieEdges(env);
 
@@ -170,9 +170,11 @@ public class Tests {
 
         //partitionedEdges2.print();
         //partitionedEdges2.writeAsCsv("out", FileSystem.WriteMode.OVERWRITE);
-        keyedStream3.print();
-        keyedStream3.writeAsCsv("out", FileSystem.WriteMode.OVERWRITE);
-        env.execute();
+        //keyedStream5.print();
+        //keyedStream4.writeAsCsv("out2", FileSystem.WriteMode.OVERWRITE);
+        keyedStream5.writeAsCsv("out", FileSystem.WriteMode.OVERWRITE);
+        JobExecutionResult result = env.execute();
+        System.out.println("Net runtime is: "+result.getNetRuntime());
 
     }
 

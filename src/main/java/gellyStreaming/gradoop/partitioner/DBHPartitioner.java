@@ -95,11 +95,22 @@ public class DBHPartitioner<T> implements Partitioner<T> {
 
         //3-UPDATE DEGREES
 
-        System.out.println("source:"+source+" target:"+target+" machineid:"+machine_id);
+        //System.out.println("source:"+source+" target:"+target+" machineid:"+machine_id);
         first_vertex.incrementDegree();
         second_vertex.incrementDegree();
 
-        return machine_id;
+        switch (machine_id) {
+            case 0: return 1;
+            case 1: return 2;
+            case 2: return 4;
+            case 3: return 6;
+            case 4: return 9;
+            case 5: return 10;
+            case 6: return 11;
+            case 7: return 22;
+        }
+
+        return -1;
     }
 
 
