@@ -1,6 +1,6 @@
 package gellyStreaming.gradoop.partitioner;
 
-import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
+import org.apache.flink.graph.Edge;
 
 import java.io.Serializable;
 import java.util.HashMap;
@@ -10,22 +10,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 //TODO: clean up? lots of unused methods.
 
-public class StoredVertexPartitionState implements Serializable {
+public class StoredVertexPartitionState implements Serializable{
 
-    private final HashMap<Long, StoredVertex> record_map;
-    private final AtomicInteger[] machines_load_edges;
-    private final AtomicInteger[] machines_load_vertices;
+    private HashMap<Long, StoredVertex> record_map;
+    private AtomicInteger[] machines_load_edges;
+    private AtomicInteger[] machines_load_vertices;
 
     int MAX_LOAD;
 
-    public StoredVertexPartitionState(int numPartitions) {
+    public StoredVertexPartitionState(int k) {
 
-        record_map = new HashMap<>();
-        machines_load_edges = new AtomicInteger[numPartitions];
-        for (int i = 0; i<machines_load_edges.length; i++){
+        record_map = new HashMap<Long,StoredVertex>();
+        machines_load_edges = new AtomicInteger[k];
+        for (int i = 0; i<machines_load_edges.length;i++){
             machines_load_edges[i] = new AtomicInteger(0);
         }
-        machines_load_vertices = new AtomicInteger[numPartitions];
+        machines_load_vertices = new AtomicInteger[k];
         for (int i = 0; i<machines_load_vertices.length;i++){
             machines_load_vertices[i] = new AtomicInteger(0);
         }
@@ -60,9 +60,10 @@ public class StoredVertexPartitionState implements Serializable {
         return record_map.size();
     }
 
+
     public int getTotalReplicas(){
         int result = 0;
-        for (Long x : record_map.keySet()){
+        for (long x : record_map.keySet()){
             int r = record_map.get(x).getReplicas();
             if (r>0){
                 result += record_map.get(x).getReplicas();
@@ -74,6 +75,7 @@ public class StoredVertexPartitionState implements Serializable {
         return result;
     }
 
+
     public synchronized int getMachineLoad(int m) {
         return machines_load_edges[m].get();
     }
@@ -82,8 +84,6 @@ public class StoredVertexPartitionState implements Serializable {
         return machines_load_vertices[m].get();
     }
 
-    // seems unnecessary edge parameter
-    //public synchronized void incrementMachineLoad(int m, TemporalEdge e) {
     public synchronized void incrementMachineLoad(int m) {
         int new_value = machines_load_edges[m].incrementAndGet();
         if (new_value>MAX_LOAD){
@@ -113,9 +113,11 @@ public class StoredVertexPartitionState implements Serializable {
         return MIN_LOAD;
     }
 
+
     public int getMaxLoad() {
         return MAX_LOAD;
     }
+
 
     public SortedSet<Long> getVertexIds() {
         //if (GLOBALS.OUTPUT_FILE_NAME!=null){ out.close(); }

@@ -2,8 +2,8 @@ package gellyStreaming.gradoop.model;
 
 import gellyStreaming.gradoop.oldModel.GraphStream;
 import gellyStreaming.gradoop.oldModel.SimpleEdgeStream;
+import gellyStreaming.gradoop.partitioner.CustomKeySelector;
 import gellyStreaming.gradoop.partitioner.DBHPartitioner;
-import gellyStreaming.gradoop.partitioner.TempEdgeKeySelector;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.core.fs.FileSystem;
@@ -20,6 +20,7 @@ import org.gradoop.common.model.impl.id.GradoopIdSet;
 import org.gradoop.common.model.impl.properties.Properties;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -106,14 +107,14 @@ public class Tests {
 
     public static void testPartitioner() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        DataStream<TemporalEdge> edges2 = getSampleEdgeStream(env);
-        DataStream<TemporalEdge> edges3 = getMovieEdges(env);
-        env.setParallelism(1); //WHY?
-        edges3
-                .partitionCustom(new DBHPartitioner<GradoopId>(
-                        new TempEdgeKeySelector<GradoopId>(0),4),
-                        new TempEdgeKeySelector<GradoopId>(0))
-                .writeAsText("out", FileSystem.WriteMode.OVERWRITE).setParallelism(4);
+        DataStream<Edge<Long, String>> edges = getMovieEdges(env);
+        env.setParallelism(4);
+        DataStream<Edge<Long, String>> partitionedEdges = edges
+                .partitionCustom(new DBHPartitioner<>(
+                        new CustomKeySelector<>(0), 4),
+                        new CustomKeySelector<>(0));
+        partitionedEdges.print();
+        partitionedEdges.writeAsCsv("out", FileSystem.WriteMode.OVERWRITE);
         env.execute();
     }
 
@@ -261,7 +262,7 @@ public class Tests {
         });
     }
 
-    static DataStream<TemporalEdge> getMovieEdges(StreamExecutionEnvironment env) {
+    static DataStream<TemporalEdge> getMovieEdgesTemp(StreamExecutionEnvironment env) {
         GradoopIdSet graphId = new GradoopIdSet();
         DataStream<TemporalEdge> edges = env.readTextFile("src/main/resources/ml-100k/u.data")
                 .map(new MapFunction<String, TemporalEdge>() {
@@ -293,5 +294,21 @@ public class Tests {
                 */
                 ;
         return edges;
+    }
+
+    public static  DataStream<Edge<Long, String>> getMovieEdges(StreamExecutionEnvironment env) throws IOException {
+
+        return env.readTextFile("src/main/resources/ml-100k/u.data")
+                .map(new MapFunction<String, Edge<Long, String>>() {
+                    @Override
+                    public Edge<Long, String> map(String s) throws Exception {
+                        String[] fields = s.split("\t");
+                        long src = Long.parseLong(fields[0]);
+                        long trg = Long.parseLong(fields[1]);
+                        String value = fields[2] + "," + fields[3];
+                        return new Edge<>(src, trg, value);
+                    }
+                });
+
     }
 }
