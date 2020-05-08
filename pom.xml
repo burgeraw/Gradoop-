@@ -70,6 +70,18 @@
         </dependency>
         <dependency>
             <groupId>org.apache.flink</groupId>
+            <artifactId>flink-core</artifactId>
+            <version>1.10.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-queryable-state-client-java</artifactId>
+            <version>1.10.0</version>
+        </dependency>
+
+        <!--can be removed in final version-->
+        <dependency>
+            <groupId>org.apache.flink</groupId>
             <artifactId>statefun-flink-harness</artifactId>
             <version>2.0.0</version>
         </dependency>

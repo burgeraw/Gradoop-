@@ -1,7 +1,5 @@
 package gellyStreaming.gradoop.partitioner;
 
-
-
 import java.io.Serializable;
 import java.util.Iterator;
 import java.util.TreeSet;

@@ -95,9 +95,7 @@ public class DBHPartitioner<T> implements Partitioner<T> {
 
         //3-UPDATE DEGREES
 
-        //System.out.print("source"+source);
-        //System.out.println("target"+target);
-        //System.out.println("machineid"+machine_id);
+        System.out.println("source:"+source+" target:"+target+" machineid:"+machine_id);
         first_vertex.incrementDegree();
         second_vertex.incrementDegree();
 

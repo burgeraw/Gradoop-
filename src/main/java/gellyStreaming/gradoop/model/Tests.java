@@ -6,11 +6,17 @@ import gellyStreaming.gradoop.partitioner.CustomKeySelector;
 import gellyStreaming.gradoop.partitioner.DBHPartitioner;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.Partitioner;
+import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.DataStreamUtils;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.windowing.time.Time;
@@ -107,16 +113,69 @@ public class Tests {
 
     public static void testPartitioner() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        DataStream<Edge<Long, String>> edges = getMovieEdges(env);
+        int numberOfPartitions = 4;
         env.setParallelism(4);
+        //nv.setMaxParallelism(4);
+        DataStream<Edge<Long, String>> edges = getMovieEdges(env);
+
+        CustomKeySelector<Long, String> keySelector1 = new CustomKeySelector<>(0);
+
+        Partitioner<Long> partitioner = new DBHPartitioner<>(keySelector1, numberOfPartitions);
+        KeySelector<Edge<Long, String>, Integer> keySelector2 = new KeySelector<Edge<Long, String>, Integer>() {
+            @Override
+            public Integer getKey(Edge<Long, String> edge) throws Exception {
+                return partitioner.partition(edge.f0, numberOfPartitions);
+            }};
+
+        KeySelector<Tuple2<Edge<Long, String>,Integer>, Integer> keySelector3 = new KeySelector<Tuple2<Edge<Long, String>, Integer>, Integer>() {
+            @Override
+            public Integer getKey(Tuple2<Edge<Long, String>, Integer> edgeIntegerTuple2) throws Exception {
+                return edgeIntegerTuple2.f1;
+            }
+        };
+
+        // Original way as used by Gelly-streaming, we require a keyby to use state tho.
+        // Gives correct results, also in thread
         DataStream<Edge<Long, String>> partitionedEdges = edges
                 .partitionCustom(new DBHPartitioner<>(
-                        new CustomKeySelector<>(0), 4),
-                        new CustomKeySelector<>(0));
-        partitionedEdges.print();
-        partitionedEdges.writeAsCsv("out", FileSystem.WriteMode.OVERWRITE);
+                        new CustomKeySelector<Long, String>(0), numberOfPartitions),
+                        new CustomKeySelector<Long, String>(0))
+                ;
+        // Correct results, using map to save partition
+        DataStream<Tuple2<Edge<Long,String>,Integer>> partitionedEdges2 =
+                edges.map(
+                        new MapFunction<Edge<Long, String>, Tuple2<Edge<Long, String>, Integer>>() {
+                            @Override
+                            public Tuple2<Edge<Long, String>, Integer> map(Edge<Long, String> edge) throws Exception {
+                                Long keyEdge = keySelector1.getKey(edge);
+                                int machineId = partitioner.partition(keyEdge, numberOfPartitions);
+                                return Tuple2.of(edge, machineId);
+                            }
+                        });
+
+        // Partitioner suddenly loses ability to get Target id = always 0 --> because keySelector1 needs to be called first.
+        KeyedStream<Edge<Long, String>, Integer> keyedStream =
+                DataStreamUtils.reinterpretAsKeyedStream(edges, keySelector2);
+        KeyedStream<Edge<Long, String>, Integer> keyedStream2 =
+                DataStreamUtils.reinterpretAsKeyedStream(partitionedEdges, keySelector2);
+        // Problem of keygroups. 4 keys outputted, but put into 2 partitions. Also no trg.
+        KeyedStream<Edge<Long, String>, Integer> keyedStream3 = partitionedEdges.keyBy(new CustomKeySelector(0)).keyBy(keySelector2);
+        // Threads dont get all values with same key
+        KeyedStream<Tuple2<Edge<Long, String>, Integer>, Integer> keyedStream4 =
+                DataStreamUtils.reinterpretAsKeyedStream(partitionedEdges2, keySelector3);
+        // Puts the four keys into 2 threads.
+        KeyedStream<Tuple2<Edge<Long, String>, Integer>, Integer> keyedStream5 =
+                partitionedEdges2.keyBy(keySelector3);
+
+
+        //partitionedEdges2.print();
+        //partitionedEdges2.writeAsCsv("out", FileSystem.WriteMode.OVERWRITE);
+        keyedStream3.print();
+        keyedStream3.writeAsCsv("out", FileSystem.WriteMode.OVERWRITE);
         env.execute();
+
     }
+
 
     public static void main(String[] args) throws Exception {
         //testLoadingGraph();

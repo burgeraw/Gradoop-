@@ -1,7 +1,5 @@
 package gellyStreaming.gradoop.partitioner;
 
-import org.apache.flink.graph.Edge;
-
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.SortedSet;
@@ -12,9 +10,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class StoredVertexPartitionState implements Serializable{
 
-    private HashMap<Long, StoredVertex> record_map;
-    private AtomicInteger[] machines_load_edges;
-    private AtomicInteger[] machines_load_vertices;
+    private final HashMap<Long, StoredVertex> record_map;
+    private final AtomicInteger[] machines_load_edges;
+    private final AtomicInteger[] machines_load_vertices;
 
     int MAX_LOAD;
 
