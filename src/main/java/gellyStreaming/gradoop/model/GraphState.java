@@ -20,13 +20,12 @@ import java.util.Map;
 public class GraphState implements Serializable {
 
     private final KeyedStream<TemporalEdge, Integer> input;
-    private transient MapState<GradoopId, HashSet<TemporalEdge>> sortedEdgeList;
-    private transient MapStateDescriptor<GradoopId, HashSet<TemporalEdge>> ELdescriptor;
+
 
     public GraphState(KeyedStream<TemporalEdge, Integer> input, String strategy) {
         this.input = input;
         switch (strategy) {
-            case "EL": input.map(new createEdgeList());
+            case "EL": input.map(new createEdgeList()).writeAsText("out", FileSystem.WriteMode.OVERWRITE);
         }
     }
 
@@ -35,11 +34,13 @@ public class GraphState implements Serializable {
         return input;
     }
 
-    public MapState<GradoopId, HashSet<TemporalEdge>> getState() {
-        return sortedEdgeList;
-    }
+    //public MapState<GradoopId, HashSet<TemporalEdge>> getState() {
+      //  return sortedEdgeList;
+    //}
 
     private class createEdgeList extends RichMapFunction<TemporalEdge, String> {
+        private transient MapState<GradoopId, HashSet<TemporalEdge>> sortedEdgeList;
+        private transient MapStateDescriptor<GradoopId, HashSet<TemporalEdge>> ELdescriptor;
         @Override
         public void open(Configuration parameters) throws Exception {
             ELdescriptor =

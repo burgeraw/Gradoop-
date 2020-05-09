@@ -186,7 +186,7 @@ public class Tests {
         //int val = edgestream.buildState("EL").getPartitionId();
         //System.out.println("id is : "+val);
         //edgestream.buildState("EL").getData().writeAsText("out", FileSystem.WriteMode.OVERWRITE);
-        edgestream.buildState("EL").getData().writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+        edgestream.buildState("EL");
         env.execute();
     }
 
