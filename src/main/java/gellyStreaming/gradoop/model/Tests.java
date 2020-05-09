@@ -11,6 +11,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
+import org.apache.flink.graph.streaming.SimpleEdgeStream;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
@@ -103,7 +104,6 @@ public class Tests {
         SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(edges2, env, null);
         //GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(4, SECONDS), Time.of(2, SECONDS), EdgeDirection.IN, "EL");
         //GradoopSnapshotStream snapshotStream = edgestream.slice(Time.of(4, SECONDS), Time.of(4, SECONDS), EdgeDirection.ALL, "AL");
-        GradoopSnapshotStream snapshotStream1 = edgestream.slice2(Time.of(4, SECONDS), Time.of(4, SECONDS), EdgeDirection.IN);
         JobExecutionResult job = env.execute();
         System.out.println(job.getNetRuntime());
     }
@@ -150,14 +150,52 @@ public class Tests {
         //keyedStream.print();
         keyedStream.writeAsCsv("out", FileSystem.WriteMode.OVERWRITE);
         JobExecutionResult result = env.execute();
+    }
 
+
+
+    static void incrementalState() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        int numberOfPartitions = 4;
+        env.setParallelism(numberOfPartitions);
+        DataStream<Tuple2<Edge<Long, String>, Integer>> partitionedStream =
+                new PartitionEdges<Long, String>().getPartitionedEdges(getMovieEdges(env), numberOfPartitions);
+        GradoopIdSet graphId = new GradoopIdSet();
+        DataStream<TemporalEdge> tempEdges = partitionedStream.map(new MapFunction<Tuple2<Edge<Long, String>, Integer>, TemporalEdge>() {
+            @Override
+            public TemporalEdge map(Tuple2<Edge<Long, String>, Integer> edge) throws Exception {
+                Map<String, Object> properties = new HashMap<>();
+                Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
+                Long timestamp = Long.parseLong(edge.f0.f2.split(",")[1]);
+                properties.put("rating", rating);
+                properties.put("partitionID", edge.f1);
+                return new TemporalEdge(
+                        GradoopId.get(),
+                        "watched",
+                        new GradoopId(0, edge.f0.getSource().intValue(), (short)0, 0),
+                        new GradoopId(0, edge.f0.getTarget().intValue(), (short)1, 0),
+                        Properties.createFromMap(properties),
+                        graphId,
+                        timestamp, //       (valid) starting time
+                        Long.MAX_VALUE
+                );
+            }
+        });
+        SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(tempEdges, env, graphId);
+        //edgestream.getDegrees().writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+        //int val = edgestream.buildState("EL").getPartitionId();
+        //System.out.println("id is : "+val);
+        //edgestream.buildState("EL").getData().writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+        edgestream.buildState("EL").getData().writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+        env.execute();
     }
 
 
     public static void main(String[] args) throws Exception {
         //testLoadingGraph();
         //testGradoopSnapshotStream();
-        testPartitioner();
+        //testPartitioner();
+        incrementalState();
     }
 
     static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
@@ -314,7 +352,7 @@ public class Tests {
                                 new GradoopId(0, Integer.parseInt(values[1]), (short)1,0),
                                 Properties.createFromMap(properties),
                                 graphId,
-                                Long.parseLong(values[3]), // (valid until) starting time
+                                Long.parseLong(values[3]), //       (valid) starting time
                                 Long.MAX_VALUE             //               ending   time
                         );
                     }

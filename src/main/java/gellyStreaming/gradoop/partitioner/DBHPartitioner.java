@@ -4,16 +4,16 @@ import org.apache.flink.api.common.functions.Partitioner;
 
 import java.util.Random;
 
-public class DBHPartitioner<T> implements Partitioner<T> {
+public class DBHPartitioner<K, V> implements Partitioner<K> {
     private static final long serialVersionUID = 1L;
-    private final CustomKeySelector<Long, String> keySelector;
+    private final CustomKeySelector<K, V> keySelector;
     private final int k;
     private final StoredVertexPartitionState currentState;
     private static final int MAX_SHRINK = 100;
     private final double seed;
     private final int shrink;
 
-    public DBHPartitioner(CustomKeySelector<Long, String> keySelector, int k)
+    public DBHPartitioner(CustomKeySelector<K, V> keySelector, int k)
     {
         this.keySelector = keySelector;
         this.k= k;
@@ -25,7 +25,7 @@ public class DBHPartitioner<T> implements Partitioner<T> {
     }
 
     @Override
-    public int partition(Object key, int numPartitions) {
+    public int partition(K key, int numPartitions) {
 
         long target = 0L;
         try {
@@ -96,15 +96,20 @@ public class DBHPartitioner<T> implements Partitioner<T> {
         first_vertex.incrementDegree();
         second_vertex.incrementDegree();
 
+        /*
+        Mind that this uses custom keys to ensure that all partitions get keyed to different keygroups
+        and different partitions. If using more partitions, ensure to generate more keys using KeyGen.java
+         */
+
         switch (machine_id) {
             case 0: return 1;
-            case 1: return 2;
-            case 2: return 4;
-            case 3: return 6;
-            case 4: return 9;
-            case 5: return 10;
+            case 1: return 4;
+            case 2: return 9;
+            case 3: return 2;
+            case 4: return 10;
+            case 5: return 14;
             case 6: return 11;
-            case 7: return 22;
+            case 7: return 6;
         }
 
         return -1;

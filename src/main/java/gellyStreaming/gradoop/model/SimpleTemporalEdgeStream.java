@@ -440,33 +440,23 @@ keyed on source or target vertex --> good for adjacency list
     }
 
     static class GraphIdSelector implements KeySelector<TemporalEdge, GradoopIdSet> {
-
         @Override
         public GradoopIdSet getKey(TemporalEdge temporalEdge) {
             return temporalEdge.getGraphIds();
         }
     }
 
-    public GradoopSnapshotStream slice2(Time size, Time slide, EdgeDirection direction)
-            throws IllegalArgumentException {
-
-        switch (direction) {
-            case IN:
-            case OUT:
-                return new GradoopSnapshotStream(
-                        getEdges()
-                                .keyBy(new GraphIdSelector())
-                                .window(SlidingEventTimeWindows.of(size, slide))
-                        );
-            case ALL:
-                return new GradoopSnapshotStream(
-                        this.undirected()
-                                .getEdges()
-                                .keyBy(new GraphIdSelector())
-                                .window(SlidingEventTimeWindows.of(size, slide))
-                        );
-            default:
-                throw new IllegalArgumentException("Illegal edge direction");
+    static class getPartitionId implements KeySelector<TemporalEdge, Integer> {
+        @Override
+        public Integer getKey(TemporalEdge temporalEdge) throws Exception {
+            return temporalEdge.getPropertyValue("partitionID").getInt();
         }
     }
+
+    public GraphState buildState(String strategy) {
+        return new GraphState(
+                this.edges.keyBy(new getPartitionId()),
+                strategy);
+    }
+
 }
