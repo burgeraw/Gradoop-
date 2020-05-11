@@ -33,7 +33,7 @@ public class KeyGen
         this.maxPartitions = 128;
     }
 
-    Integer next(int targetPartition)
+    public Integer next(int targetPartition)
     {
         Queue<Integer> queue;
         if (cache.containsKey(targetPartition))
@@ -70,6 +70,17 @@ public class KeyGen
         }
 
         return queue.poll(); // Return the first elements and deletes it -->similar to dequeue of scala's mutable.Queue
+    }
+
+    public int[] getKeys(int numPartitions) {
+        KeyGen keyGenerator = new KeyGen(numPartitions,
+                KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
+        int[] procID = new int[numPartitions];
+
+        for (int i = 0; i < numPartitions ; i++) {
+            procID[i] = keyGenerator.next(i);
+        }
+        return procID;
     }
 
     public static void main(String[] args) throws Exception

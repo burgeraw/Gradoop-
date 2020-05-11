@@ -1,6 +1,8 @@
 package gellyStreaming.gradoop.partitioner;
 
+import gellyStreaming.gradoop.model.KeyGen;
 import org.apache.flink.api.common.functions.Partitioner;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 
 import java.util.Random;
 
@@ -26,7 +28,11 @@ public class DBHPartitioner<K, V> implements Partitioner<K> {
 
     @Override
     public int partition(K key, int numPartitions) {
-
+        KeyGen keyGenerator = new KeyGen(numPartitions,
+                KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
+        int[] keys = new int[numPartitions];
+        for (int i = 0; i < numPartitions ; i++)
+            keys[i] = keyGenerator.next(i);
         long target = 0L;
         try {
             Object target2 = keySelector.getValue(key);
@@ -101,18 +107,7 @@ public class DBHPartitioner<K, V> implements Partitioner<K> {
         and different partitions. If using more partitions, ensure to generate more keys using KeyGen.java
          */
 
-        switch (machine_id) {
-            case 0: return 1;
-            case 1: return 4;
-            case 2: return 9;
-            case 3: return 2;
-            case 4: return 10;
-            case 5: return 14;
-            case 6: return 11;
-            case 7: return 6;
-        }
-
-        return -1;
+        return keys[machine_id];
     }
 
 
