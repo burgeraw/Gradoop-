@@ -7,7 +7,11 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.Partitioner;
+import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.state.MapState;
+import org.apache.flink.api.common.state.MapStateDescriptor;
+import org.apache.flink.api.common.typeinfo.TypeHint;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -20,6 +24,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
+import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -43,6 +48,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
 import static java.util.concurrent.TimeUnit.*;
@@ -215,65 +221,51 @@ public class Tests {
         //System.out.println("id is : "+val);
         //edgestream.buildState("EL").getData().writeAsText("out", FileSystem.WriteMode.OVERWRITE);
         //edgestream.buildState("EL2");
-        /*
-        edgestream.getEdges()
-                .keyBy(new KeySelector<TemporalEdge, Object>() {
-            @Override
-            public Object getKey(TemporalEdge temporalEdge) throws Exception {
-                return temporalEdge.getPropertyValue("partitionID");
-            }
-        })
-                .window(new WindowAssigner<TemporalEdge, Window>() {
-                    @Override
-                    public Collection<Window> assignWindows(TemporalEdge temporalEdge, long l, WindowAssignerContext windowAssignerContext) {
-                        return null;
-                    }
 
-                    @Override
-                    public Trigger<TemporalEdge, Window> getDefaultTrigger(StreamExecutionEnvironment streamExecutionEnvironment) {
-                        return null;
-                    }
 
-                    @Override
-                    public TypeSerializer<Window> getWindowSerializer(ExecutionConfig executionConfig) {
-                        return null;
-                    }
-
-                    @Override
-                    public boolean isEventTime() {
-                        return false;
-                    }
-                })
-                .trigger(new Trigger<TemporalEdge, Window>() {
-                    @Override
-                    public TriggerResult onElement(TemporalEdge temporalEdge, long l, Window window, TriggerContext triggerContext) throws Exception {
-                        return null;
-                    }
-
-                    @Override
-                    public TriggerResult onProcessingTime(long l, Window window, TriggerContext triggerContext) throws Exception {
-                        return null;
-                    }
-
-                    @Override
-                    public TriggerResult onEventTime(long l, Window window, TriggerContext triggerContext) throws Exception {
-                        return null;
-                    }
-
-                    @Override
-                    public void clear(Window window, TriggerContext triggerContext) throws Exception {
-
-                    }
-                })
-                .process(new ProcessWindowFunction<TemporalEdge, MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>,
-                        Object, GlobalWindow>() {
-                    @Override
-                    public void process(Object o, Context context, Iterable<TemporalEdge> iterable, Collector<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> collector) throws Exception {
-                        context.globalState().getMapState();
-                    }
-                });
+        edgestream.buildState("EL2");
         env.execute();
-         */
+
+    }
+    private static class MyTrigger extends Trigger<TemporalEdge, Window> {
+        private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
+        private transient MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor;
+
+        public MyTrigger() {
+            ELdescriptor =
+                    new MapStateDescriptor<>(
+                            "edgeList",
+                            TypeInformation.of(new TypeHint<GradoopId>() {}),
+                            TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {})
+                    );
+        }
+
+        @Override
+        public TriggerResult onElement(TemporalEdge temporalEdge, long l, Window window, TriggerContext triggerContext) throws Exception {
+            sortedEdgeList = triggerContext.getPartitionedState(ELdescriptor);
+            if(!sortedEdgeList.contains(temporalEdge.getSourceId())) {
+                sortedEdgeList.put(temporalEdge.getSourceId(), new HashMap<GradoopId, TemporalEdge>());
+            }
+            sortedEdgeList.get(temporalEdge.getSourceId()).put(temporalEdge.getTargetId(),temporalEdge);
+
+            return TriggerResult.CONTINUE;
+        }
+
+        @Override
+        public TriggerResult onProcessingTime(long l, Window window, TriggerContext triggerContext) throws Exception {
+            return TriggerResult.CONTINUE;
+        }
+
+        @Override
+        public TriggerResult onEventTime(long l, Window window, TriggerContext triggerContext) throws Exception {
+
+            return TriggerResult.CONTINUE;
+        }
+
+        @Override
+        public void clear(Window window, TriggerContext triggerContext) throws Exception {
+
+        }
     }
 
     public static void testState() throws Exception {
@@ -326,8 +318,8 @@ public class Tests {
         //testLoadingGraph();
         //testGradoopSnapshotStream();
         //testPartitioner();
-        //incrementalState();
-        testState();
+        incrementalState();
+        //testState();
     }
 
     static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
