@@ -459,4 +459,10 @@ keyed on source or target vertex --> good for adjacency list
                 strategy);
     }
 
+    public GraphState buildState(String strategy, Time windowsize, Time slide) {
+        return new GraphState(
+                this.edges.keyBy(new getPartitionId()),
+                strategy, windowsize, slide);
+    }
+
 }

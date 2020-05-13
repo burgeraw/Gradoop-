@@ -8,6 +8,7 @@ import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeHint;
@@ -39,6 +40,7 @@ import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.streaming.api.windowing.windows.Window;
 import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
+import org.apache.hadoop.mapreduce.Job;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.common.model.impl.id.GradoopIdSet;
 import org.gradoop.common.model.impl.properties.Properties;
@@ -182,8 +184,9 @@ public class Tests {
         int numberOfPartitions = 4;
         env.setParallelism(numberOfPartitions);
         DataStream<Tuple2<Edge<Long, String>, Integer>> partitionedStream =
-                new PartitionEdges<Long, String>().getPartitionedEdges(getMovieEdges(env), numberOfPartitions);
+                new PartitionEdges<Long, String>().getPartitionedEdges(getMovieEdges2(env), numberOfPartitions);
         GradoopIdSet graphId = new GradoopIdSet();
+        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
         DataStream<TemporalEdge> tempEdges = partitionedStream.map(new MapFunction<Tuple2<Edge<Long, String>, Integer>, TemporalEdge>() {
             @Override
             public TemporalEdge map(Tuple2<Edge<Long, String>, Integer> edge) throws Exception {
@@ -203,30 +206,26 @@ public class Tests {
                         Long.MAX_VALUE
                 );
             }
-        }).assignTimestampsAndWatermarks(new AssignerWithPunctuatedWatermarks<TemporalEdge>() {
-            @Nullable
+        }).assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
             @Override
-            public Watermark checkAndGetNextWatermark(TemporalEdge temporalEdge, long l) {
-                return null;
-            }
-
-            @Override
-            public long extractTimestamp(TemporalEdge temporalEdge, long l) {
+            public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
                 return temporalEdge.getValidFrom();
             }
         });
         SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(tempEdges, env, graphId);
-        //edgestream.getDegrees().writeAsText("out", FileSystem.WriteMode.OVERWRITE);
-        //int val = edgestream.buildState("EL").getPartitionId();
-        //System.out.println("id is : "+val);
-        //edgestream.buildState("EL").getData().writeAsText("out", FileSystem.WriteMode.OVERWRITE);
-        //edgestream.buildState("EL2");
 
-
-        edgestream.buildState("EL2");
-        env.execute();
-
+        // 8 hours is enough to get the entire database in one window, to check if all edges get added.
+        // If you check the output files you see that the 4 partitions add up to 100000, which is the size
+        // of the edgefile used. You can also see the partitioner is running correctly since all edges in
+        // each partition have the same partitionId in their properties.
+        edgestream.buildState("EL", Time.of(8, HOURS), Time.of(8, HOURS));
+        JobExecutionResult restuls = env.execute();
+        System.out.println("The job took "+restuls.getNetRuntime(MILLISECONDS)+ " millisec");
+        //With count/print 5702, 5030, 4607
     }
+
+
+
     private static class MyTrigger extends Trigger<TemporalEdge, Window> {
         private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
         private transient MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor;
@@ -509,4 +508,20 @@ public class Tests {
                 });
 
     }
+    public static  DataStream<Edge<Long, String>> getMovieEdges2(StreamExecutionEnvironment env) throws IOException {
+
+        return env.readTextFile("src/main/resources/ml-100k/ml-100k-sorted.csv")
+                .map(new MapFunction<String, Edge<Long, String>>() {
+                    @Override
+                    public Edge<Long, String> map(String s) throws Exception {
+                        String[] fields = s.split(",");
+                        long src = Long.parseLong(fields[0]);
+                        long trg = Long.parseLong(fields[1]);
+                        String value = fields[2] + "," + fields[3];
+                        return new Edge<>(src, trg, value);
+                    }
+                });
+
+    }
+
 }

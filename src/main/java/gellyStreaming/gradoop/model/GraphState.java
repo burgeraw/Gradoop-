@@ -1,11 +1,11 @@
 package gellyStreaming.gradoop.model;
 
+import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
@@ -13,21 +13,22 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
+import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.streaming.api.windowing.windows.Window;
 import org.apache.flink.util.Collector;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.io.Serializable;
-import java.security.KeyStore;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class GraphState implements Serializable {
 
-    private final KeyedStream<TemporalEdge, Integer> input;
+    public final KeyedStream<TemporalEdge, Integer> input;
 
 
     public GraphState(KeyedStream<TemporalEdge, Integer> input, String strategy) {
@@ -35,33 +36,122 @@ public class GraphState implements Serializable {
         switch (strategy) {
             case "EL": input.map(new createEdgeList()).writeAsText("out", FileSystem.WriteMode.OVERWRITE);
             case "EL2" : input.process(new createEdgeList2()).print();
+                break;
+            default:
+                throw new IllegalStateException("Unexpected value: " + strategy);
         }
     }
 
+    // State in windows using Incremental Window Aggregation with Aggregate function.
     public GraphState(KeyedStream<TemporalEdge, Integer> input, String strategy,
                       Time windowSize, Time slide) {
         this.input = input;
         switch (strategy) {
-            //case "EL" :
+            case "EL" : input
+                    .window(SlidingEventTimeWindows.of(
+                            windowSize, slide))
+                    .aggregate(new SetAggregate(), new Processor())
+            .writeAsText("out", FileSystem.WriteMode.OVERWRITE)
+            ;
         }
     }
 
+    public static class SetAggregate implements AggregateFunction<TemporalEdge,
+            Map<GradoopId, HashMap<GradoopId, TemporalEdge>>,
+            Map<GradoopId, HashMap<GradoopId, TemporalEdge>>> {
+
+        @Override
+        public Map<GradoopId, HashMap<GradoopId, TemporalEdge>> createAccumulator() {
+            return new HashMap<>();
+        }
+
+        @Override
+        public Map<GradoopId, HashMap<GradoopId, TemporalEdge>> add(
+                TemporalEdge edge,
+                Map<GradoopId, HashMap<GradoopId, TemporalEdge>> state) {
+            if(!state.containsKey(edge.getSourceId())) {
+                state.put(edge.getSourceId(), new HashMap<GradoopId, TemporalEdge>());
+            }
+            state.get(edge.getSourceId()).put(edge.getTargetId(),edge);
+            return state;
+        }
+
+        @Override
+        public Map<GradoopId, HashMap<GradoopId, TemporalEdge>> getResult(
+                Map<GradoopId, HashMap<GradoopId, TemporalEdge>> state) {
+            return state;
+        }
+
+        @Override
+        public Map<GradoopId, HashMap<GradoopId, TemporalEdge>> merge(
+                Map<GradoopId, HashMap<GradoopId, TemporalEdge>> state,
+                Map<GradoopId, HashMap<GradoopId, TemporalEdge>> acc) {
+            state.putAll(acc);
+            return state;
+        }
+    }
+
+    public static class Processor<Integer> extends ProcessWindowFunction<Map<GradoopId, HashMap<GradoopId, TemporalEdge>>, String, Integer, Window> {
+
+            private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
+            private transient MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor;
+
+
+            @Override
+            public void open(Configuration parameters) throws Exception {
+                ELdescriptor = new MapStateDescriptor<>(
+                        "edgeList",
+                        TypeInformation.of(new TypeHint<GradoopId>() {}),
+                        TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {})
+                );
+                sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
+            }
+
+            @Override
+            public void clear(Context context) throws Exception {
+                getRuntimeContext().getMapState(ELdescriptor).clear();
+                super.clear(context);
+            }
+
+        @Override
+            public void process(Integer key,
+                                Context context,
+                                Iterable<Map<GradoopId, HashMap<GradoopId, TemporalEdge>>> iterable,
+                                Collector<String> collector) throws Exception {
+                iterable.forEach(x -> {
+                    try {
+                        sortedEdgeList.putAll(x);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+                ///*
+            //Used to check if all edges get properly added to state.
+                AtomicInteger counter = new AtomicInteger();
+                Collection<String> edges = new ArrayList<>();
+                for(GradoopId srcId : sortedEdgeList.keys()) {
+                    HashMap<GradoopId, TemporalEdge> values = sortedEdgeList.get(srcId);
+                    for(GradoopId trg: values.keySet()){
+                        counter.incrementAndGet();
+                        edges.add(sortedEdgeList.get(srcId).get(trg).toString());
+                    }
+                }
+                collector.collect("At "+context.window().toString()+" the state has "
+                        + counter + " edges, being: "+edges.toString());
+            //*/
+            //collector.collect("We ran the process function");
+        }
+
+    }
 
     public KeyedStream<TemporalEdge, Integer> getData() {
-        return input;
+        return this.input;
     }
 
     //public MapState<GradoopId, HashSet<TemporalEdge>> getState() {
       //  return sortedEdgeList;
     //}
 
-    private class createWindowEdgeList extends ProcessWindowFunction<TemporalEdge, String, Integer, Window> {
-
-        @Override
-        public void process(Integer integer, Context context, Iterable<TemporalEdge> iterable, Collector<String> collector) throws Exception {
-
-        }
-    }
 
     private class createEdgeList2 extends KeyedProcessFunction<Integer, TemporalEdge, MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> {
         private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
@@ -71,6 +161,7 @@ public class GraphState implements Serializable {
 
         @Override
         public void open(Configuration parameters) throws Exception {
+
             MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
                     "edgeList",
                     TypeInformation.of(new TypeHint<GradoopId>() {}),
@@ -110,7 +201,7 @@ public class GraphState implements Serializable {
             //        edge.getValidFrom() + " and properties "+
             //        edge.getProperties().toString() + " added");
         }
-
+        // Never gets called??
         @Override
         public void onTimer(long timestamp, OnTimerContext ctx, Collector<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> out) throws Exception {
             long beginWindow = timestamp - windowsize;
