@@ -46,6 +46,7 @@ public class GraphState implements Serializable {
     public GraphState(KeyedStream<TemporalEdge, Integer> input, String strategy,
                       Time windowSize, Time slide) {
         this.input = input;
+
         switch (strategy) {
             case "EL" : input
                     .window(SlidingEventTimeWindows.of(
@@ -104,6 +105,7 @@ public class GraphState implements Serializable {
                         TypeInformation.of(new TypeHint<GradoopId>() {}),
                         TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {})
                 );
+                ELdescriptor.setQueryable("edgeList");
                 sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
             }
 
@@ -121,6 +123,7 @@ public class GraphState implements Serializable {
                 iterable.forEach(x -> {
                     try {
                         sortedEdgeList.putAll(x);
+                        Thread.sleep(30000);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
