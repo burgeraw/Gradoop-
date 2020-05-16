@@ -16,10 +16,14 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.QueryableStateOptions;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.graph.streaming.SimpleEdgeStream;
+import org.apache.flink.queryablestate.client.QueryableStateClient;
+import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
@@ -28,6 +32,7 @@ import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
+import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.assigners.GlobalWindows;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
@@ -48,6 +53,7 @@ import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -312,13 +318,57 @@ public class Tests {
         System.out.println(result.getNetRuntime(MILLISECONDS)+" milliseconds for job.");
     }
 
+    public static void queryableState() throws Exception {
+        int numberOfPartitions = 4;
+        Configuration config = new Configuration();
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
+        int proxyPort = 9069;
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setParallelism(numberOfPartitions);
+        DataStream<Tuple2<Edge<Long, String>, Integer>> partitionedStream =
+                new PartitionEdges<Long, String>().getPartitionedEdges(getMovieEdges2(env), numberOfPartitions);
+        GradoopIdSet graphId = new GradoopIdSet();
+        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+        DataStream<TemporalEdge> tempEdges = partitionedStream.map(new MapFunction<Tuple2<Edge<Long, String>, Integer>, TemporalEdge>() {
+            @Override
+            public TemporalEdge map(Tuple2<Edge<Long, String>, Integer> edge) throws Exception {
+                Map<String, Object> properties = new HashMap<>();
+                Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
+                Long timestamp = Long.parseLong(edge.f0.f2.split(",")[1]);
+                properties.put("rating", rating);
+                properties.put("partitionID", edge.f1);
+                return new TemporalEdge(
+                        GradoopId.get(),
+                        "watched",
+                        new GradoopId(0, edge.f0.getSource().intValue(), (short)0, 0),
+                        new GradoopId(0, edge.f0.getTarget().intValue(), (short)1, 0),
+                        Properties.createFromMap(properties),
+                        graphId,
+                        timestamp, //       (valid) starting time
+                        Long.MAX_VALUE
+                );
+            }
+        }).assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
+            @Override
+            public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
+                return temporalEdge.getValidFrom();
+            }
+        });
+        SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(tempEdges, env, graphId);
+        edgestream.buildState("EL", Time.of(8, HOURS), Time.of(8, HOURS));
+        StreamGraph graph = env.getStreamGraph();
+        System.out.println("JobId: "+graph.getJobGraph().getJobID());
+        env.execute(graph);
+    }
 
     public static void main(String[] args) throws Exception {
         //testLoadingGraph();
         //testGradoopSnapshotStream();
         //testPartitioner();
-        incrementalState();
+        //incrementalState();
         //testState();
+        queryableState();
     }
 
     static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
