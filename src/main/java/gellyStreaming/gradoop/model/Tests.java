@@ -30,6 +30,7 @@ import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
+import org.apache.flink.streaming.api.functions.TimestampAssigner;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.graph.StreamGraph;
@@ -190,7 +191,7 @@ public class Tests {
         int numberOfPartitions = 4;
         env.setParallelism(numberOfPartitions);
         DataStream<Tuple2<Edge<Long, String>, Integer>> partitionedStream =
-                new PartitionEdges<Long, String>().getPartitionedEdges(getMovieEdges2(env), numberOfPartitions);
+                new PartitionEdges<Long, String>().getPartitionedEdges(getMovieEdges2(env, "src/main/resources/ml-100k/ml-100-sorted.csv"), numberOfPartitions);
         GradoopIdSet graphId = new GradoopIdSet();
         env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
         DataStream<TemporalEdge> tempEdges = partitionedStream.map(new MapFunction<Tuple2<Edge<Long, String>, Integer>, TemporalEdge>() {
@@ -327,7 +328,7 @@ public class Tests {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         env.setParallelism(numberOfPartitions);
         DataStream<Tuple2<Edge<Long, String>, Integer>> partitionedStream =
-                new PartitionEdges<Long, String>().getPartitionedEdges(getMovieEdges2(env), numberOfPartitions);
+                new PartitionEdges<Long, String>().getPartitionedEdges(getMovieEdges2(env, "src/main/resources/ml-100k/ml-100-sorted.csv"), numberOfPartitions);
         GradoopIdSet graphId = new GradoopIdSet();
         env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
         DataStream<TemporalEdge> tempEdges = partitionedStream.map(new MapFunction<Tuple2<Edge<Long, String>, Integer>, TemporalEdge>() {
@@ -356,10 +357,29 @@ public class Tests {
             }
         });
         SimpleTemporalEdgeStream edgestream = new SimpleTemporalEdgeStream(tempEdges, env, graphId);
-        edgestream.buildState("EL", Time.of(8, HOURS), Time.of(8, HOURS));
+        //edgestream.buildState("EL", Time.of(8, HOURS), Time.of(8, HOURS));
         StreamGraph graph = env.getStreamGraph();
         System.out.println("JobId: "+graph.getJobGraph().getJobID());
         env.execute(graph);
+    }
+
+    public static void queryableState2() throws Exception {
+        int numberOfPartitions = 4;
+        Configuration config = new Configuration();
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+        SimpleTemporalEdgeStream edges = getSimpleTemporalMovieEdgesStream(env, numberOfPartitions,
+                "src/main/resources/ml-100k/ml-100-sorted.csv");
+        MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
+                "edgeList",
+                TypeInformation.of(new TypeHint<GradoopId>() {}),
+                TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {})
+        );
+        //All data in 1 window
+        //GraphState state = edges.buildState(env, "EL2", 20000000L,20000000L);
+        GraphState state = edges.buildState(env, "EL2", 10000L,1000L);
+        env.execute();
     }
 
     public static void main(String[] args) throws Exception {
@@ -368,7 +388,60 @@ public class Tests {
         //testPartitioner();
         //incrementalState();
         //testState();
-        queryableState();
+        //queryableState();
+        queryableState2();;
+    }
+
+    static SimpleTemporalEdgeStream getSimpleTemporalMovieEdgesStream(StreamExecutionEnvironment env, Integer numberOfPartitions, String filepath) throws IOException {
+        env.setParallelism(numberOfPartitions);
+        DataStream<Tuple2<Edge<Long, String>, Integer>> partitionedStream =
+                new PartitionEdges<Long, String>().getPartitionedEdges(getMovieEdges2(env, filepath), numberOfPartitions);
+        GradoopIdSet graphId = new GradoopIdSet();
+        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+        DataStream<TemporalEdge> tempEdges = partitionedStream.map(new MapFunction<Tuple2<Edge<Long, String>, Integer>, TemporalEdge>() {
+            @Override
+            public TemporalEdge map(Tuple2<Edge<Long, String>, Integer> edge) throws Exception {
+                Map<String, Object> properties = new HashMap<>();
+                Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
+                Long timestamp = Long.parseLong(edge.f0.f2.split(",")[1]);
+                properties.put("rating", rating);
+                properties.put("partitionID", edge.f1);
+                return new TemporalEdge(
+                        GradoopId.get(),
+                        "watched",
+                        new GradoopId(0, edge.f0.getSource().intValue(), (short)0, 0),
+                        new GradoopId(0, edge.f0.getTarget().intValue(), (short)1, 0),
+                        Properties.createFromMap(properties),
+                        graphId,
+                        timestamp, //       (valid) starting time
+                        Long.MAX_VALUE
+                );
+            }
+        })
+                /*
+                .assignTimestampsAndWatermarks(
+                        new AssignerWithPunctuatedWatermarks<TemporalEdge>() {
+                            @Nullable
+                            @Override
+                            public Watermark checkAndGetNextWatermark(TemporalEdge edge, long l) {
+                                return null;
+                            }
+
+                            @Override
+                            public long extractTimestamp(TemporalEdge edge, long l) {
+                                return edge.getValidFrom();
+                            }
+                        });
+
+                 */
+                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<TemporalEdge>() {
+            @Override
+            public long extractAscendingTimestamp(TemporalEdge temporalEdge) {
+                return temporalEdge.getValidFrom();
+            }
+        });
+
+        return new SimpleTemporalEdgeStream(tempEdges, env, graphId);
     }
 
     static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
@@ -509,7 +582,7 @@ public class Tests {
         });
     }
 
-    static DataStream<TemporalEdge> getMovieEdgesTemp(StreamExecutionEnvironment env) {
+    static DataStream<TemporalEdge> getMovieEdgesTemp(StreamExecutionEnvironment env, String filepath) {
         GradoopIdSet graphId = new GradoopIdSet();
         DataStream<TemporalEdge> edges = env.readTextFile("src/main/resources/ml-100k/u.data")
                 .map(new MapFunction<String, TemporalEdge>() {
@@ -558,9 +631,9 @@ public class Tests {
                 });
 
     }
-    public static  DataStream<Edge<Long, String>> getMovieEdges2(StreamExecutionEnvironment env) throws IOException {
+    public static  DataStream<Edge<Long, String>> getMovieEdges2(StreamExecutionEnvironment env, String filepath) throws IOException {
 
-        return env.readTextFile("src/main/resources/ml-100k/ml-100k-sorted.csv")
+        return env.readTextFile(filepath)
                 .map(new MapFunction<String, Edge<Long, String>>() {
                     @Override
                     public Edge<Long, String> map(String s) throws Exception {

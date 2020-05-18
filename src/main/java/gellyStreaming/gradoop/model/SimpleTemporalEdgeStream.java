@@ -459,6 +459,18 @@ keyed on source or target vertex --> good for adjacency list
                 strategy);
     }
 
+    public GraphState buildState(StreamExecutionEnvironment env, String strategy, Time windowsize, Time slide)  {
+        return new GraphState(
+                this.edges.keyBy(new getPartitionId()),
+                strategy, windowsize, slide);
+    }
+
+    public GraphState buildState(StreamExecutionEnvironment env, String strategy, Long windowsize, Long slide)  {
+        return new GraphState(env,
+                this.edges.keyBy(new getPartitionId()),
+                strategy, windowsize, slide);
+    }
+
     public GraphState buildState(String strategy, Time windowsize, Time slide)  {
         return new GraphState(
                 this.edges.keyBy(new getPartitionId()),

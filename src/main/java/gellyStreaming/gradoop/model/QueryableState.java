@@ -30,6 +30,7 @@ public class QueryableState {
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
         String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
         int proxyPort = 9069;
+
         QueryableStateClient client = new QueryableStateClient(tmHostname, proxyPort);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         env.setParallelism(numberOfPartitions);
@@ -40,7 +41,7 @@ public class QueryableState {
                         TypeInformation.of(new TypeHint<GradoopId>() {}).createSerializer(new ExecutionConfig()),
                         TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {}).createSerializer(new ExecutionConfig())
                         );
-        String jobIdParam = "d7dc956f0a9f81bb6b8f002d9f2a8b11";
+        String jobIdParam = "3ab4d1b92dfa89ecdce80b5a64eb5d9c";
         JobID jobId = JobID.fromHexString(jobIdParam);
         List<Integer> keys = Arrays.asList(4, 9, 1, 2);
         for(int key: keys) {
