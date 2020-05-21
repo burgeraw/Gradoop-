@@ -1,5 +1,6 @@
 package gellyStreaming.gradoop.model;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -8,6 +9,7 @@ import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.graph.EdgeDirection;
+import org.apache.flink.runtime.dispatcher.SingleJobJobGraphStore;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
@@ -20,6 +22,7 @@ import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 import org.gradoop.temporal.model.impl.pojo.TemporalGraphHead;
 import org.gradoop.temporal.model.impl.pojo.TemporalVertex;
 
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -458,11 +461,28 @@ keyed on source or target vertex --> good for adjacency list
                 this.edges.keyBy(new getPartitionId()),
                 strategy);
     }
-
-    public GraphState buildState(StreamExecutionEnvironment env, String strategy, Time windowsize, Time slide)  {
+/*
+    public GraphState buildState(String strategy,
+                                 org.apache.flink.streaming.api.windowing.time.Time windowsize,
+                                 org.apache.flink.streaming.api.windowing.time.Time slide)  {
         return new GraphState(
                 this.edges.keyBy(new getPartitionId()),
                 strategy, windowsize, slide);
+    }
+ */
+
+//Currently using:
+    public GraphState buildState(SingleJobJobGraphStore sg, StreamExecutionEnvironment env, String strategy,
+                                 org.apache.flink.streaming.api.windowing.time.Time windowsize,
+                                 org.apache.flink.streaming.api.windowing.time.Time slide,
+                                 Integer numPartitions) throws UnknownHostException, InterruptedException {
+        return new GraphState(sg,
+                env,
+                this.edges.keyBy(new getPartitionId()),
+                strategy,
+                windowsize,
+                slide,
+                numPartitions);
     }
 
     public GraphState buildState(StreamExecutionEnvironment env, String strategy, Long windowsize, Long slide)  {
@@ -471,7 +491,7 @@ keyed on source or target vertex --> good for adjacency list
                 strategy, windowsize, slide);
     }
 
-    public GraphState buildState(String strategy, Time windowsize, Time slide)  {
+    public GraphState buildState(String strategy, Long windowsize, Long slide)  {
         return new GraphState(
                 this.edges.keyBy(new getPartitionId()),
                 strategy, windowsize, slide);

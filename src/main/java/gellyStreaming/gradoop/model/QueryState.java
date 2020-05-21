@@ -1,0 +1,110 @@
+package gellyStreaming.gradoop.model;
+
+import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.state.MapState;
+import org.apache.flink.api.common.state.MapStateDescriptor;
+import org.apache.flink.api.common.typeinfo.TypeHint;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.queryablestate.client.QueryableStateClient;
+import org.apache.flink.runtime.rest.RestServerEndpoint;
+import org.apache.flink.runtime.rest.handler.RestHandlerSpecification;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
+import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
+import org.apache.flink.runtime.webmonitor.WebMonitorExtension;
+import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
+import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandler;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.gradoop.common.model.impl.id.GradoopId;
+import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
+
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
+
+public class QueryState {
+
+    private final QueryableStateClient client;
+    private final MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
+    private final JobID jobID;
+
+    public QueryState(JobID jobID) throws UnknownHostException {
+        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
+        //String tmHostname = "127.0.0.1";
+        int proxyPort = 9067;
+        this.jobID = jobID;
+
+
+        this.client = new QueryableStateClient(tmHostname, proxyPort);
+        this.descriptor =
+                new MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>>(
+                        "edgeList",
+                        TypeInformation.of(new TypeHint<GradoopId>() {
+                        }).createSerializer(new ExecutionConfig()),
+                        TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
+                        }).createSerializer(new ExecutionConfig())
+                );
+        System.out.println("jobid: " + jobID.toString());
+        System.out.println("tmHostname: " + tmHostname);
+    }
+
+    public HashMap<GradoopId, TemporalEdge> getSrcVertex(Integer key, GradoopId srcVertex) {
+        CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "queryableState",
+                        key,
+                        new TypeHint<Integer>(){},
+                        descriptor);
+        AtomicReference<HashMap<GradoopId, TemporalEdge>> answer = new AtomicReference<>();
+        resultFuture.thenAccept(response -> {
+            try {
+                answer.set(response.get(srcVertex));
+            } catch (Exception e) {
+                System.out.println("We dont have state");
+            }
+        });
+        return answer.get();
+    }
+
+    public MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> getState(Integer key) {
+        return null;
+    }
+
+    public Boolean edgeExists(Integer key, GradoopId srcVertex, GradoopId trgVertex) {
+        return null;
+    }
+
+    /*
+
+        while(true) {
+            for (int key : keys) {
+                CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
+                        client.getKvState(
+                                jobID,
+                                "queryableState",
+                                key,
+                                new TypeHint<Integer>(){},
+                                descriptor);
+                resultFuture.thenAccept(response -> {
+                    try {
+                        GradoopId gradoopId = new GradoopId(0, 196, (short)0, 0);
+                        System.out.println(response.get(gradoopId));
+                        System.out.println("We got state");
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        System.out.println("We dont have state");
+                    }
+                });
+            }
+            //Thread.sleep(100);
+        }
+        //client.shutdownAndWait();
+    }
+     */
+}
