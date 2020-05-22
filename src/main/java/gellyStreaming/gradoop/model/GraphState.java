@@ -73,7 +73,7 @@ public class GraphState implements Serializable {
     }
 
     // State in windows using Incremental Window Aggregation with Aggregate function.
-    public GraphState(SingleJobJobGraphStore jobID, StreamExecutionEnvironment env,
+    public GraphState(StreamGraph jobID, StreamExecutionEnvironment env,
                       KeyedStream<TemporalEdge, Integer> input,
                       String strategy,
                       org.apache.flink.streaming.api.windowing.time.Time windowSize,
@@ -81,7 +81,8 @@ public class GraphState implements Serializable {
                       Integer numPartitions) throws UnknownHostException, InterruptedException {
         this.input = input;
         this.env = env;
-        this.jobID = (JobID) jobID.getJobIds().toArray()[0];
+        this.jobID = jobID.getJobGraph().getJobID();
+        jobID.getJobGraph().setJobID(this.jobID);
         //this.QS = new QueryState(sg.getJobGraph().getJobID());
         KeyGen keyGenerator = new KeyGen(numPartitions,
                 KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));

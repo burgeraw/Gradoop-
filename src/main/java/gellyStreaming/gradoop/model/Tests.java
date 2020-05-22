@@ -18,7 +18,9 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.QueryableStateOptions;
+import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
@@ -27,19 +29,32 @@ import org.apache.flink.queryablestate.client.QueryableStateClient;
 import org.apache.flink.runtime.clusterframework.TaskExecutorProcessSpec;
 import org.apache.flink.runtime.clusterframework.TaskExecutorProcessUtils;
 import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor;
+import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.SingleJobJobGraphStore;
 import org.apache.flink.runtime.executiongraph.AccessExecutionGraph;
 import org.apache.flink.runtime.io.network.partition.TaskExecutorPartitionTracker;
 import org.apache.flink.runtime.io.network.partition.TaskExecutorPartitionTrackerImpl;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobmanager.JobGraphStore;
+import org.apache.flink.runtime.jobmaster.JobManagerRunner;
 import org.apache.flink.runtime.minicluster.MiniCluster;
 import org.apache.flink.runtime.resourcemanager.TaskExecutorRegistration;
+import org.apache.flink.runtime.resourcemanager.registration.JobManagerRegistration;
+import org.apache.flink.runtime.rest.RestClient;
+import org.apache.flink.runtime.rest.RestClientConfiguration;
+import org.apache.flink.runtime.rest.RestServerEndpoint;
+import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
+import org.apache.flink.runtime.rest.messages.MessageHeaders;
+import org.apache.flink.runtime.rest.messages.job.metrics.JobManagerMetricsHeaders;
+import org.apache.flink.runtime.rest.messages.job.metrics.JobManagerMetricsMessageParameters;
+import org.apache.flink.runtime.taskexecutor.JobManagerConnection;
 import org.apache.flink.runtime.taskexecutor.TaskExecutor;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorResourceUtils;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorToResourceManagerConnection;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
+import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
+import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
@@ -63,6 +78,7 @@ import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.streaming.api.windowing.windows.Window;
 import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.ConfigurationException;
 import org.apache.hadoop.mapreduce.Job;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.common.model.impl.id.GradoopIdSet;
@@ -76,7 +92,10 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 
 import static java.util.concurrent.TimeUnit.*;
 
@@ -225,8 +244,8 @@ public class Tests {
         SingleJobJobGraphStore store = new SingleJobJobGraphStore(sg.getJobGraph());
         JobID jobID = sg.getJobGraph().getJobID();
         System.out.println("time1 jobid: "+jobID);
-        //sg.getJobGraph().setJobID(jobID);
-        tempEdges.buildState(store, env, "EL-proc",
+        sg.getJobGraph().setJobID(jobID);
+        tempEdges.buildState(sg, env, "EL-proc",
                 org.apache.flink.streaming.api.windowing.time.Time.of(200, MILLISECONDS),
                 org.apache.flink.streaming.api.windowing.time.Time.of(100, MILLISECONDS),
                 numberOfPartitions);
@@ -240,48 +259,6 @@ public class Tests {
 
     }
 
-
-
-    private static class MyTrigger extends Trigger<TemporalEdge, Window> {
-        private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
-        private transient MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor;
-
-        public MyTrigger() {
-            ELdescriptor =
-                    new MapStateDescriptor<>(
-                            "edgeList",
-                            TypeInformation.of(new TypeHint<GradoopId>() {}),
-                            TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {})
-                    );
-        }
-
-        @Override
-        public TriggerResult onElement(TemporalEdge temporalEdge, long l, Window window, TriggerContext triggerContext) throws Exception {
-            sortedEdgeList = triggerContext.getPartitionedState(ELdescriptor);
-            if(!sortedEdgeList.contains(temporalEdge.getSourceId())) {
-                sortedEdgeList.put(temporalEdge.getSourceId(), new HashMap<GradoopId, TemporalEdge>());
-            }
-            sortedEdgeList.get(temporalEdge.getSourceId()).put(temporalEdge.getTargetId(),temporalEdge);
-
-            return TriggerResult.CONTINUE;
-        }
-
-        @Override
-        public TriggerResult onProcessingTime(long l, Window window, TriggerContext triggerContext) throws Exception {
-            return TriggerResult.CONTINUE;
-        }
-
-        @Override
-        public TriggerResult onEventTime(long l, Window window, TriggerContext triggerContext) throws Exception {
-
-            return TriggerResult.CONTINUE;
-        }
-
-        @Override
-        public void clear(Window window, TriggerContext triggerContext) throws Exception {
-
-        }
-    }
 
     public static void testState() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -392,22 +369,27 @@ public class Tests {
         System.out.println("Job took: "+result.getNetRuntime(MILLISECONDS)+ " milliseconds");
     }
 
-    public static void queryableState3() throws Exception {
-        int numberOfPartitions = 4;
+    public static void restApi() throws ConfigurationException {
         Configuration config = new Configuration();
-        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
-        //env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
-        SimpleTemporalEdgeStream edges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                "src/main/resources/ml-100k/u.data");
-        MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
-                "edgeList",
-                TypeInformation.of(new TypeHint<GradoopId>() {}),
-                TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {})
-        );
-        GraphState state = edges.buildState("EL", 10000L, 10000L);
-        JobExecutionResult result = env.execute();
-        System.out.println(result.getNetRuntime(SECONDS));
+        config.setString(JobManagerOptions.ADDRESS, "localhost");
+        config.setInteger(RestOptions.RETRY_MAX_ATTEMPTS, 10);
+        config.setLong(RestOptions.RETRY_DELAY, 0);
+        config.setInteger(RestOptions.PORT, 0);
+
+        RestServerEndpointConfiguration restServerEndpointConfiguration = RestServerEndpointConfiguration.fromConfiguration(config);
+
+        //DispatcherGateway gateway =
+        //GatewayRetriever<DispatcherGateway> retriever = () -> CompletableFuture.completedFuture(gateway);
+
+        //RestClient restClient = new RestClient(RestClientConfiguration.fromConfiguration(config), );
+        //RestServerEndpoint.
+        //jobmanager.web.ssl.enabled
+        ExecutorService ex = WebMonitorEndpoint.createExecutorService(config.getInteger(RestOptions.SERVER_NUM_THREADS),
+                config.getInteger(RestOptions.SERVER_THREAD_PRIORITY),"name");
+        RestClient restClient = new RestClient(RestClientConfiguration.fromConfiguration(config),ex);
+
+        //restClient.sendRequest("localhost", 0, ?);
+
     }
 
 
@@ -423,7 +405,8 @@ public class Tests {
         //testState();
         //queryableState();
         //queryableState2();
-        //queryableState3();
+        //restApi();
+        Thread.sleep(100000);
         Runtime rt2 = Runtime.getRuntime();
         long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;
         System.out.println("Used MB after: "+ usedMB2);

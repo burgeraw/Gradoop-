@@ -12,6 +12,7 @@ import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.runtime.dispatcher.SingleJobJobGraphStore;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
@@ -472,7 +473,7 @@ keyed on source or target vertex --> good for adjacency list
  */
 
 //Currently using:
-    public GraphState buildState(SingleJobJobGraphStore sg, StreamExecutionEnvironment env, String strategy,
+    public GraphState buildState(StreamGraph sg, StreamExecutionEnvironment env, String strategy,
                                  org.apache.flink.streaming.api.windowing.time.Time windowsize,
                                  org.apache.flink.streaming.api.windowing.time.Time slide,
                                  Integer numPartitions) throws UnknownHostException, InterruptedException {
