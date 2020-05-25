@@ -23,6 +23,7 @@ import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 import org.gradoop.temporal.model.impl.pojo.TemporalGraphHead;
 import org.gradoop.temporal.model.impl.pojo.TemporalVertex;
 
+import java.io.IOException;
 import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -462,16 +463,19 @@ keyed on source or target vertex --> good for adjacency list
                 this.edges.keyBy(new getPartitionId()),
                 strategy);
     }
-/*
-    public GraphState buildState(String strategy,
-                                 org.apache.flink.streaming.api.windowing.time.Time windowsize,
-                                 org.apache.flink.streaming.api.windowing.time.Time slide)  {
-        return new GraphState(
-                this.edges.keyBy(new getPartitionId()),
-                strategy, windowsize, slide);
-    }
- */
 
+//USING
+    public GraphState buildState(QueryState QS,
+                                 String strategy,
+                                 org.apache.flink.streaming.api.windowing.time.Time windowsize,
+                                 org.apache.flink.streaming.api.windowing.time.Time slide,
+                                Integer numPartitions) throws InterruptedException, IOException {
+        return new GraphState(QS,
+                this.edges.keyBy(new getPartitionId()),
+                strategy, windowsize, slide, numPartitions);
+    }
+
+/*
 //Currently using:
     public GraphState buildState(StreamGraph sg, StreamExecutionEnvironment env, String strategy,
                                  org.apache.flink.streaming.api.windowing.time.Time windowsize,
@@ -485,6 +489,7 @@ keyed on source or target vertex --> good for adjacency list
                 slide,
                 numPartitions);
     }
+ */
 
     public GraphState buildState(StreamExecutionEnvironment env, String strategy, Long windowsize, Long slide)  {
         return new GraphState(env,

@@ -17,10 +17,13 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.JobManagerOptions;
-import org.apache.flink.configuration.QueryableStateOptions;
-import org.apache.flink.configuration.RestOptions;
+import org.apache.flink.client.deployment.ClusterClientServiceLoader;
+import org.apache.flink.client.program.ClusterClient;
+import org.apache.flink.client.program.ClusterClientProvider;
+import org.apache.flink.client.program.MiniClusterClient;
+import org.apache.flink.configuration.*;
+import org.apache.flink.core.execution.DetachedJobExecutionResult;
+import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
@@ -44,6 +47,7 @@ import org.apache.flink.runtime.rest.RestClient;
 import org.apache.flink.runtime.rest.RestClientConfiguration;
 import org.apache.flink.runtime.rest.RestServerEndpoint;
 import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
+import org.apache.flink.runtime.rest.handler.async.AsynchronousOperationResult;
 import org.apache.flink.runtime.rest.messages.MessageHeaders;
 import org.apache.flink.runtime.rest.messages.job.metrics.JobManagerMetricsHeaders;
 import org.apache.flink.runtime.rest.messages.job.metrics.JobManagerMetricsMessageParameters;
@@ -80,6 +84,7 @@ import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.ConfigurationException;
 import org.apache.hadoop.mapreduce.Job;
+import org.apache.zookeeper.Environment;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.common.model.impl.id.GradoopIdSet;
 import org.gradoop.common.model.impl.properties.Properties;
@@ -227,11 +232,24 @@ public class Tests {
         int numberOfPartitions = 4;
         Configuration config = new Configuration();
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-        int proxyPort = 9069;
+        //config.setString(JobManagerOptions.ADDRESS, "localhost");
+        //config.setInteger(RestOptions.RETRY_MAX_ATTEMPTS, 10);
+        //config.setLong(RestOptions.RETRY_DELAY, 1000);
+        //config.setInteger(RestOptions.PORT, 0);
+        //config.setString(RestOptions.ADDRESS,"localhost");
+        config.setBoolean(DeploymentOptions.ATTACHED, false);
+
+
+        //ExecutorService ex = WebMonitorEndpoint.createExecutorService(config.getInteger(RestOptions.SERVER_NUM_THREADS),
+        //        config.getInteger(RestOptions.SERVER_THREAD_PRIORITY),"name");
+        //RestClient restClient = new RestClient(RestClientConfiguration.fromConfiguration(config),ex);
+        //RestServerEndpointConfiguration restServerEndpointConfiguration = RestServerEndpointConfiguration.fromConfiguration(config);
+
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
                 "src/main/resources/ml-100k/ml-100k-sorted.csv");
 
@@ -239,23 +257,24 @@ public class Tests {
         // If you check the output files you see that the 4 partitions add up to 100000, which is the size
         // of the edgefile used. You can also see the partitioner is running correctly since all edges in
         // each partition have the same partitionId in their properties.
-        StreamGraph sg = env.getStreamGraph();
-        sg.setJobName("myTests");
-        SingleJobJobGraphStore store = new SingleJobJobGraphStore(sg.getJobGraph());
-        JobID jobID = sg.getJobGraph().getJobID();
-        System.out.println("time1 jobid: "+jobID);
-        sg.getJobGraph().setJobID(jobID);
-        tempEdges.buildState(sg, env, "EL-proc",
-                org.apache.flink.streaming.api.windowing.time.Time.of(200, MILLISECONDS),
-                org.apache.flink.streaming.api.windowing.time.Time.of(100, MILLISECONDS),
-                numberOfPartitions);
-        JobExecutionResult results = env.execute("myTests");
+        //sg.setJobName("myTests");
+        //SingleJobJobGraphStore store = new SingleJobJobGraphStore(sg.getJobGraph());
+        //JobID jobID = sg.getJobGraph().getJobID();
+        //System.out.println("time1 jobid: "+jobID);
         //sg.getJobGraph().setJobID(jobID);
-        JobGraph jb = store.recoverJobGraph((JobID) store.getJobIds().toArray()[0]);
+        QueryState QS = new QueryState();
 
-        System.out.println("jobid end: "+results.getJobID());
-        //new QueryState(streamGraph.getJobGraph().getJobID(), numberOfPartitions);
-        System.out.println("The job took "+results.getNetRuntime(MILLISECONDS)+ " millisec");
+        tempEdges.buildState(QS,"EL-proc",
+                org.apache.flink.streaming.api.windowing.time.Time.of(4000, MILLISECONDS),
+                org.apache.flink.streaming.api.windowing.time.Time.of(2000, MILLISECONDS),
+                numberOfPartitions);
+        //sg.getJobGraph().setJobID(jobId);
+        JobClient jobClient = env.executeAsync();
+        QS.initialize(jobClient.getJobID());
+        System.out.println(jobClient.getJobExecutionResult(ClassLoader.getPlatformClassLoader()).get().getNetRuntime(MILLISECONDS) + " milliseconds");
+
+        //System.out.println("jobid end: "+results.getJobID());
+        //System.out.println("The job took "+results.getNetRuntime(MILLISECONDS)+ " millisec");
 
     }
 

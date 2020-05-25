@@ -25,19 +25,26 @@ import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class QueryState {
 
-    private final QueryableStateClient client;
-    private final MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
-    private final JobID jobID;
+    private QueryableStateClient client;
+    private MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
+    private JobID jobID;
+    private boolean initilized = false;
 
-    public QueryState(JobID jobID) throws UnknownHostException {
-        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-        //String tmHostname = "127.0.0.1";
+    public QueryState() {
+        initilized = false;
+    }
+
+    public void initialize(JobID jobID) throws UnknownHostException {
+        //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
+        String tmHostname = "127.0.0.1";
         int proxyPort = 9067;
         this.jobID = jobID;
+        initilized = true;
 
 
         this.client = new QueryableStateClient(tmHostname, proxyPort);
@@ -53,7 +60,11 @@ public class QueryState {
         System.out.println("tmHostname: " + tmHostname);
     }
 
-    public HashMap<GradoopId, TemporalEdge> getSrcVertex(Integer key, GradoopId srcVertex) {
+    public boolean isInitilized() {
+        return initilized;
+    }
+
+    public HashMap<GradoopId, TemporalEdge> getSrcVertex(Integer key, GradoopId srcVertex) throws ExecutionException, InterruptedException {
         CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
                 client.getKvState(
                         jobID,
@@ -65,6 +76,7 @@ public class QueryState {
         resultFuture.thenAccept(response -> {
             try {
                 answer.set(response.get(srcVertex));
+                System.out.println(response.get(srcVertex));
             } catch (Exception e) {
                 System.out.println("We dont have state");
             }

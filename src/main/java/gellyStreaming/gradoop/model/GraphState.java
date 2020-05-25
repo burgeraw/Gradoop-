@@ -1,5 +1,8 @@
 package gellyStreaming.gradoop.model;
 
+import akka.dispatch.ExecutorServiceConfigurator;
+import akka.dispatch.ExecutorServiceFactory;
+import akka.dispatch.ExecutorServiceFactoryProvider;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
@@ -8,10 +11,19 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.hadoop.shaded.org.apache.http.HttpResponse;
+import org.apache.flink.hadoop.shaded.org.apache.http.client.HttpClient;
+import org.apache.flink.hadoop.shaded.org.apache.http.client.methods.HttpGet;
+import org.apache.flink.hadoop.shaded.org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.flink.hadoop.shaded.org.apache.http.impl.client.HttpClients;
 import org.apache.flink.runtime.dispatcher.SingleJobJobGraphStore;
+import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
@@ -24,10 +36,13 @@ import org.apache.flink.util.Collector;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -73,24 +88,27 @@ public class GraphState implements Serializable {
     }
 
     // State in windows using Incremental Window Aggregation with Aggregate function.
-    public GraphState(StreamGraph jobID, StreamExecutionEnvironment env,
+    // USING
+    public GraphState(QueryState QS,
+                      //StreamExecutionEnvironment env,
                       KeyedStream<TemporalEdge, Integer> input,
                       String strategy,
                       org.apache.flink.streaming.api.windowing.time.Time windowSize,
                       org.apache.flink.streaming.api.windowing.time.Time slide,
-                      Integer numPartitions) throws UnknownHostException, InterruptedException {
+                      Integer numPartitions) throws IOException, InterruptedException {
         this.input = input;
-        this.env = env;
-        this.jobID = jobID.getJobGraph().getJobID();
-        jobID.getJobGraph().setJobID(this.jobID);
-        //this.QS = new QueryState(sg.getJobGraph().getJobID());
+        //this.env = env;
+        //this.jobID = jobID;
+        //jobID.getJobGraph().setJobID(this.jobID);
+        this.QS = QS;
+
         KeyGen keyGenerator = new KeyGen(numPartitions,
                 KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
         keys = new Integer[numPartitions];
         for (int i = 0; i < numPartitions; i++)
             keys[i] = keyGenerator.next(i);
-        Thread.sleep(10);
-        QS = new QueryState(this.jobID);
+        //this.jobID = JobID.fromHexString("fd72014d4c864993a2e5a9287b4a9c5d");
+
         switch (strategy) {
             case "EL-event" :
                 input
@@ -110,6 +128,8 @@ public class GraphState implements Serializable {
                 ;
         }
     }
+
+
 
     public GraphState(StreamExecutionEnvironment env, KeyedStream<TemporalEdge, Integer> input, String strategy,
                       Long windowSize, Long slide) {
@@ -410,10 +430,17 @@ public class GraphState implements Serializable {
                 AtomicInteger total = new AtomicInteger();
                 AtomicInteger duplicates = new AtomicInteger();
 
+                int counter = 0;
+                while(!QS.isInitilized()) {
+                    Thread.sleep(100);
+                    counter ++;
+                }
+                System.out.println("Waited "+counter*100+" milliseconds");
 
                 for(GradoopId srcId : sortedEdgeList.keys()) {
                     for(java.lang.Integer otherkey : keys) {
                         if(otherkey != key) {
+                            //System.out.println("checking key: "+otherkey+" in partition: "+key);
                             //QS = new QueryState(env.getStreamGraph("myTests").getJobGraph().getJobID());
                             if(QS.getSrcVertex(otherkey, srcId) != null) {
                                 duplicates.getAndIncrement();
