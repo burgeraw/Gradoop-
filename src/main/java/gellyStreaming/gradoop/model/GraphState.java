@@ -45,6 +45,7 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -141,6 +142,10 @@ public class GraphState implements Serializable {
             case "TTL" : input.process(new createEdgeList4(windowSize, slide))
                     .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
         }
+    }
+
+    public void overWriteQS(JobID jobID) throws UnknownHostException {
+        this.QS.initialize(jobID);
     }
 
     public static class createEdgeList4 extends KeyedProcessFunction<Integer, TemporalEdge, String> {
@@ -430,19 +435,23 @@ public class GraphState implements Serializable {
                 AtomicInteger total = new AtomicInteger();
                 AtomicInteger duplicates = new AtomicInteger();
 
-                int counter = 0;
+                AtomicInteger counter = new AtomicInteger(0);
                 while(!QS.isInitilized()) {
                     Thread.sleep(100);
-                    counter ++;
+                    counter.getAndIncrement();
                 }
-                System.out.println("Waited "+counter*100+" milliseconds");
+                if(counter.get()>0) {
+                    System.out.println("Waited " + (counter.get() * 100) + " milliseconds");
+                }
 
                 for(GradoopId srcId : sortedEdgeList.keys()) {
                     for(java.lang.Integer otherkey : keys) {
                         if(otherkey != key) {
                             //System.out.println("checking key: "+otherkey+" in partition: "+key);
                             //QS = new QueryState(env.getStreamGraph("myTests").getJobGraph().getJobID());
-                            if(QS.getSrcVertex(otherkey, srcId) != null) {
+                            HashMap<GradoopId, TemporalEdge> answer = QS.getSrcVertex(otherkey, srcId);
+                            //System.out.println(answer);
+                            if(answer != null) {
                                 duplicates.getAndIncrement();
                                 break;
                             }

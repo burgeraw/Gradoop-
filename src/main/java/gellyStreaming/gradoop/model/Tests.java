@@ -237,7 +237,7 @@ public class Tests {
         //config.setLong(RestOptions.RETRY_DELAY, 1000);
         //config.setInteger(RestOptions.PORT, 0);
         //config.setString(RestOptions.ADDRESS,"localhost");
-        config.setBoolean(DeploymentOptions.ATTACHED, false);
+        //config.setBoolean(DeploymentOptions.ATTACHED, false);
 
 
         //ExecutorService ex = WebMonitorEndpoint.createExecutorService(config.getInteger(RestOptions.SERVER_NUM_THREADS),
@@ -257,21 +257,18 @@ public class Tests {
         // If you check the output files you see that the 4 partitions add up to 100000, which is the size
         // of the edgefile used. You can also see the partitioner is running correctly since all edges in
         // each partition have the same partitionId in their properties.
-        //sg.setJobName("myTests");
-        //SingleJobJobGraphStore store = new SingleJobJobGraphStore(sg.getJobGraph());
-        //JobID jobID = sg.getJobGraph().getJobID();
-        //System.out.println("time1 jobid: "+jobID);
-        //sg.getJobGraph().setJobID(jobID);
+
         QueryState QS = new QueryState();
 
-        tempEdges.buildState(QS,"EL-proc",
+        GraphState gs = tempEdges.buildState(QS,"EL-proc",
                 org.apache.flink.streaming.api.windowing.time.Time.of(4000, MILLISECONDS),
                 org.apache.flink.streaming.api.windowing.time.Time.of(2000, MILLISECONDS),
                 numberOfPartitions);
         //sg.getJobGraph().setJobID(jobId);
         JobClient jobClient = env.executeAsync();
-        QS.initialize(jobClient.getJobID());
+        gs.overWriteQS(jobClient.getJobID());
         System.out.println(jobClient.getJobExecutionResult(ClassLoader.getPlatformClassLoader()).get().getNetRuntime(MILLISECONDS) + " milliseconds");
+        System.out.println("JobID end: "+jobClient.getJobID());
 
         //System.out.println("jobid end: "+results.getJobID());
         //System.out.println("The job took "+results.getNetRuntime(MILLISECONDS)+ " millisec");
@@ -411,6 +408,16 @@ public class Tests {
 
     }
 
+    public static void triangleEstimator() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        SimpleTemporalEdgeStream edges = getSimpleTemporalMovieEdgesStream2(env, 1,
+                "src/main/resources/aves-sparrow-social.edges");
+        env.setParallelism(1);
+        //edges.getGlobalTriangles(1000000, 0.1).writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+        edges.TriangleCount(1000000, 0.1).getGlobalTriangles().print();
+        env.execute();
+    }
+
 
 
     public static void main(String[] args) throws Exception {
@@ -420,12 +427,13 @@ public class Tests {
         //testLoadingGraph();
         //testGradoopSnapshotStream();
         //testPartitioner();
-        incrementalState();
+        //incrementalState();
         //testState();
         //queryableState();
         //queryableState2();
         //restApi();
-        Thread.sleep(100000);
+        triangleEstimator();
+        //Thread.sleep(100000);
         Runtime rt2 = Runtime.getRuntime();
         long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;
         System.out.println("Used MB after: "+ usedMB2);
@@ -493,9 +501,9 @@ public class Tests {
             @Override
             public TemporalEdge map(Tuple2<Edge<Long, String>, Integer> edge) throws Exception {
                 Map<String, Object> properties = new HashMap<>();
-                Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
+                //Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
                 Long timestamp = Long.parseLong(edge.f0.f2.split(",")[1]);
-                properties.put("rating", rating);
+                //properties.put("rating", rating);
                 properties.put("partitionID", edge.f1);
                 return new TemporalEdge(
                         GradoopId.get(),
@@ -711,7 +719,7 @@ public class Tests {
                 .map(new MapFunction<String, Edge<Long, String>>() {
                     @Override
                     public Edge<Long, String> map(String s) throws Exception {
-                        String[] fields = s.split(",");
+                        String[] fields = s.split("\\s");
                         long src = Long.parseLong(fields[0]);
                         long trg = Long.parseLong(fields[1]);
                         String value = fields[2] + "," + fields[3];
