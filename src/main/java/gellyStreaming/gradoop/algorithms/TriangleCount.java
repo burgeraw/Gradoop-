@@ -49,9 +49,8 @@ public class TriangleCount {
         sizeOfWaitingRoom = new AtomicInteger((int)(k * alpha));
         sizeOfReservoir = new AtomicInteger(k - sizeOfWaitingRoom.get());
         this.input = input;
-        waitingRoom = new AtomicIntegerArray(sizeOfWaitingRoom.get()*2);
+        //waitingRoom = new AtomicIntegerArray(sizeOfWaitingRoom.get()*2);
         //reservoir = new AtomicIntegerArray(sizeOfReservoir.get()*2);
-        ListState
     }
 
     public DataStream<Double> getGlobalTriangles() {

@@ -21,6 +21,7 @@ import org.apache.flink.hadoop.shaded.org.apache.http.client.methods.HttpGet;
 import org.apache.flink.hadoop.shaded.org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.flink.hadoop.shaded.org.apache.http.impl.client.HttpClients;
 import org.apache.flink.runtime.dispatcher.SingleJobJobGraphStore;
+import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
@@ -451,6 +452,13 @@ public class GraphState implements Serializable {
                             //QS = new QueryState(env.getStreamGraph("myTests").getJobGraph().getJobID());
                             HashMap<GradoopId, TemporalEdge> answer = QS.getSrcVertex(otherkey, srcId);
                             //System.out.println(answer);
+                            int tries = 100;
+                            while(tries>0 && answer == null) {
+                                answer = QS.getSrcVertex(otherkey, srcId);
+                                //Thread.sleep(100);
+                                tries--;
+                            }
+                            System.out.println("tries: " +(100-tries));
                             if(answer != null) {
                                 duplicates.getAndIncrement();
                                 break;

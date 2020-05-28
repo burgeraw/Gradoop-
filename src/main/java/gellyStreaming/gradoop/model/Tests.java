@@ -251,18 +251,18 @@ public class Tests {
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
 
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                "src/main/resources/ml-100k/ml-100k-sorted.csv");
+                "src/main/resources/ml-100k/ml-100-sorted.csv");
 
         // 8 hours is enough to get the entire database in one (eventtime) window, to check if all edges get added.
         // If you check the output files you see that the 4 partitions add up to 100000, which is the size
         // of the edgefile used. You can also see the partitioner is running correctly since all edges in
         // each partition have the same partitionId in their properties.
-
+        SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
         QueryState QS = new QueryState();
 
         GraphState gs = tempEdges.buildState(QS,"EL-proc",
-                org.apache.flink.streaming.api.windowing.time.Time.of(4000, MILLISECONDS),
-                org.apache.flink.streaming.api.windowing.time.Time.of(2000, MILLISECONDS),
+                org.apache.flink.streaming.api.windowing.time.Time.of(4, MILLISECONDS),
+                org.apache.flink.streaming.api.windowing.time.Time.of(2, MILLISECONDS),
                 numberOfPartitions);
         //sg.getJobGraph().setJobID(jobId);
         JobClient jobClient = env.executeAsync();
@@ -427,12 +427,12 @@ public class Tests {
         //testLoadingGraph();
         //testGradoopSnapshotStream();
         //testPartitioner();
-        //incrementalState();
+        incrementalState();
         //testState();
         //queryableState();
         //queryableState2();
         //restApi();
-        triangleEstimator();
+        //triangleEstimator();
         //Thread.sleep(100000);
         Runtime rt2 = Runtime.getRuntime();
         long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;
@@ -501,9 +501,9 @@ public class Tests {
             @Override
             public TemporalEdge map(Tuple2<Edge<Long, String>, Integer> edge) throws Exception {
                 Map<String, Object> properties = new HashMap<>();
-                //Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
+                Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
                 Long timestamp = Long.parseLong(edge.f0.f2.split(",")[1]);
-                //properties.put("rating", rating);
+                properties.put("rating", rating);
                 properties.put("partitionID", edge.f1);
                 return new TemporalEdge(
                         GradoopId.get(),
@@ -719,7 +719,7 @@ public class Tests {
                 .map(new MapFunction<String, Edge<Long, String>>() {
                     @Override
                     public Edge<Long, String> map(String s) throws Exception {
-                        String[] fields = s.split("\\s");
+                        String[] fields = s.split(",");
                         long src = Long.parseLong(fields[0]);
                         long trg = Long.parseLong(fields[1]);
                         String value = fields[2] + "," + fields[3];

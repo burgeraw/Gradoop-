@@ -8,6 +8,7 @@ import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.queryablestate.client.QueryableStateClient;
+import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.rest.RestServerEndpoint;
 import org.apache.flink.runtime.rest.handler.RestHandlerSpecification;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
@@ -42,19 +43,22 @@ public class QueryState {
     public void initialize(JobID jobID) throws UnknownHostException {
         //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
         String tmHostname = "127.0.0.1";
-        int proxyPort = 9067;
+        int proxyPort = 9069;
         this.jobID = jobID;
         initilized = true;
-
+        ExecutionConfig executionConfig = new ExecutionConfig();
+        executionConfig.registerPojoType(GradoopId.class);
+        executionConfig.registerPojoType(TemporalEdge.class);
+        executionConfig.registerPojoType(HashMap.class);
 
         this.client = new QueryableStateClient(tmHostname, proxyPort);
         this.descriptor =
                 new MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>>(
                         "edgeList",
                         TypeInformation.of(new TypeHint<GradoopId>() {
-                        }).createSerializer(new ExecutionConfig()),
+                        }).createSerializer(executionConfig),
                         TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
-                        }).createSerializer(new ExecutionConfig())
+                        }).createSerializer(executionConfig)
                 );
         System.out.println("jobid: " + jobID.toString());
         System.out.println("tmHostname: " + tmHostname);
@@ -65,22 +69,25 @@ public class QueryState {
     }
 
     public HashMap<GradoopId, TemporalEdge> getSrcVertex(Integer key, GradoopId srcVertex) throws ExecutionException, InterruptedException {
+
         CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
-                client.getKvState(
-                        jobID,
-                        "queryableState",
-                        key,
-                        new TypeHint<Integer>(){},
-                        descriptor);
+        client.getKvState(
+                jobID,
+                "edgeList",
+                key,
+                new TypeHint<Integer>() {
+                },
+                descriptor);
         AtomicReference<HashMap<GradoopId, TemporalEdge>> answer = new AtomicReference<>();
         resultFuture.thenAccept(response -> {
             try {
                 answer.set(response.get(srcVertex));
-                System.out.println(response.get(srcVertex));
+                //System.out.println(response.get(srcVertex));
             } catch (Exception e) {
                 System.out.println("We dont have state");
             }
         });
+        System.out.println(answer.get());
         return answer.get();
     }
 
