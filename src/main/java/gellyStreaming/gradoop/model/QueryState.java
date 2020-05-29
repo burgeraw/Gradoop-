@@ -6,27 +6,17 @@ import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.queryablestate.client.QueryableStateClient;
-import org.apache.flink.runtime.query.UnknownKvStateLocation;
-import org.apache.flink.runtime.rest.RestServerEndpoint;
-import org.apache.flink.runtime.rest.handler.RestHandlerSpecification;
-import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
-import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
-import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
-import org.apache.flink.runtime.webmonitor.WebMonitorExtension;
-import org.apache.flink.runtime.webmonitor.WebMonitorUtils;
-import org.apache.flink.shaded.netty4.io.netty.channel.ChannelInboundHandler;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
-import java.net.InetAddress;
+
 import java.net.UnknownHostException;
 import java.util.HashMap;
-import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class QueryState {
@@ -68,7 +58,7 @@ public class QueryState {
         return initilized;
     }
 
-    public HashMap<GradoopId, TemporalEdge> getSrcVertex(Integer key, GradoopId srcVertex) throws ExecutionException, InterruptedException {
+    public HashMap<GradoopId, TemporalEdge> getSrcVertex(Integer key, GradoopId srcVertex) throws Exception {
 
         CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
         client.getKvState(
@@ -78,17 +68,27 @@ public class QueryState {
                 new TypeHint<Integer>() {
                 },
                 descriptor);
-        AtomicReference<HashMap<GradoopId, TemporalEdge>> answer = new AtomicReference<>();
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        //<HashMap<GradoopId, TemporalEdge>> answer = new AtomicReference<>(new HashMap<>());
+        final Tuple1<HashMap<GradoopId, TemporalEdge>> def = new Tuple1<>();
+        //final HashMap<GradoopId, TemporalEdge> def1 = new HashMap<>();
         resultFuture.thenAccept(response -> {
             try {
-                answer.set(response.get(srcVertex));
-                //System.out.println(response.get(srcVertex));
+                //answer.set(response.get(srcVertex));
+                System.out.println("in QS: "+response.get(srcVertex));
+                results.set(true);
+                def.f0 = response.get(srcVertex);
             } catch (Exception e) {
                 System.out.println("We dont have state");
+                results.set(true);
             }
         });
-        System.out.println(answer.get());
-        return answer.get();
+        //System.out.println(answer.get());
+        if(results.get()) {
+            return def.f0;
+        } else {
+            throw new Exception();
+        }
     }
 
     public MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> getState(Integer key) {
@@ -126,4 +126,75 @@ public class QueryState {
         //client.shutdownAndWait();
     }
      */
+
+    public void initialize2(JobID jobID) throws UnknownHostException {
+        //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
+        String tmHostname = "127.0.0.1";
+        int proxyPort = 9069;
+        this.jobID = jobID;
+        initilized = true;
+        ExecutionConfig executionConfig = new ExecutionConfig();
+
+        this.client = new QueryableStateClient(tmHostname, proxyPort);
+        MapStateDescriptor<Integer, Integer> descriptor2 =
+                new MapStateDescriptor<Integer, Integer>(
+                        "state",
+                        TypeInformation.of(new TypeHint<Integer>() {
+                        }).createSerializer(executionConfig),
+                        TypeInformation.of(new TypeHint<Integer>() {
+                        }).createSerializer(executionConfig)
+                );
+        System.out.println("jobid: " + jobID.toString());
+        System.out.println("tmHostname: " + tmHostname);
+    }
+
+    public MapState<Integer, Integer> getState2(Integer key) throws Exception {
+        ExecutionConfig executionConfig = new ExecutionConfig();
+
+        MapStateDescriptor<Integer, Integer> descriptor2 =
+                new MapStateDescriptor<Integer, Integer>(
+                        "state",
+                        TypeInformation.of(new TypeHint<Integer>() {
+                        }).createSerializer(executionConfig),
+                        TypeInformation.of(new TypeHint<Integer>() {
+                        }).createSerializer(executionConfig)
+                );
+        CompletableFuture<MapState<Integer, Integer>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "state",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptor2);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        final Tuple1<MapState<Integer, Integer>> def = new Tuple1<>();
+        try{
+            def.f0 = resultFuture.get();
+            results.set(true);
+        } catch (Exception e) {
+            System.out.println(e);
+        }
+        /*
+        resultFuture.thenAccept(response -> {
+            try {
+                //answer.set(response.get(srcVertex));
+                //System.out.println("in QS: "+response.get(key).toString());
+                results.set(true);
+                def.f0 = response;
+                //System.out.println("in QS def.f0: "+def.f0);
+            } catch (Exception e) {
+                System.out.println("We dont have state");
+                results.set(true);
+            }
+        });
+
+         */
+        //System.out.println(answer.get());
+        if(results.get()) {
+            return def.f0;
+        } else {
+            throw new Exception();
+        }
+    }
 }

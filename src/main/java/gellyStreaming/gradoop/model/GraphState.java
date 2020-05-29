@@ -54,7 +54,7 @@ public class GraphState implements Serializable {
 
     private final KeyedStream<TemporalEdge, Integer> input;
     private static StreamExecutionEnvironment env;
-    private static Integer[] keys;
+    private static int[] keys;
     private static QueryState QS;
     private static JobID jobID;
 
@@ -106,7 +106,7 @@ public class GraphState implements Serializable {
 
         KeyGen keyGenerator = new KeyGen(numPartitions,
                 KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
-        keys = new Integer[numPartitions];
+        keys = new int[numPartitions];
         for (int i = 0; i < numPartitions; i++)
             keys[i] = keyGenerator.next(i);
         //this.jobID = JobID.fromHexString("fd72014d4c864993a2e5a9287b4a9c5d");
@@ -133,9 +133,20 @@ public class GraphState implements Serializable {
 
 
 
-    public GraphState(StreamExecutionEnvironment env, KeyedStream<TemporalEdge, Integer> input, String strategy,
-                      Long windowSize, Long slide) {
+    public GraphState(QueryState QS,
+                      KeyedStream<TemporalEdge, Integer> input,
+                      String strategy,
+                      Long windowSize,
+                      Long slide,
+                      Integer numPartitions) throws InterruptedException {
         this.input = input;
+        this.QS = QS;
+        KeyGen keyGenerator = new KeyGen(numPartitions,
+                KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
+        keys = new int[numPartitions];
+        for (int i = 0; i < numPartitions; i++)
+            keys[i] = keyGenerator.next(i);
+
 
         switch (strategy) {
             case "EL2" : input.process(new createEdgeList3(windowSize, slide))
@@ -150,11 +161,11 @@ public class GraphState implements Serializable {
     }
 
     public static class createEdgeList4 extends KeyedProcessFunction<Integer, TemporalEdge, String> {
-        private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
-        private Long window;
-        private Long slide;
+        private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> edgeList;
+        private final Long window;
+        private final Long slide;
         private transient ValueState<Long> lastOutput;
-        private transient ValueState<Integer> totalEdges;
+        //private transient ValueState<Integer> totalEdges;
         //private StreamExecutionEnvironment env;
 
         public createEdgeList4(Long window, Long slide) {
@@ -177,53 +188,137 @@ public class GraphState implements Serializable {
                     TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
                     })
             );
-            ELdescriptor.enableTimeToLive(ttlConfig);
-            sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
+            //ELdescriptor.enableTimeToLive(ttlConfig);
+            ELdescriptor.setQueryable("edgeList");
+            edgeList = getRuntimeContext().getMapState(ELdescriptor);
             ValueStateDescriptor<Long> descriptor = new ValueStateDescriptor<Long>(
                     "lastOutputTime", Long.class);
             lastOutput = getRuntimeContext().getState(descriptor);
-            ValueStateDescriptor<Integer> descriptor1 = new ValueStateDescriptor<Integer>(
-                    "total edges", Integer.class
-            );
-            totalEdges = getRuntimeContext().getState(descriptor1);
+            //ValueStateDescriptor<Integer> descriptor1 = new ValueStateDescriptor<Integer>(
+            //        "total edges", Integer.class
+            //);
+            //totalEdges = getRuntimeContext().getState(descriptor1);
+
         }
 
         @Override
         public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
             if(lastOutput.value() == null) {
+                while(!QS.isInitilized()) {
+                    Thread.sleep(100);
+                }
                 lastOutput.update(context.timerService().currentProcessingTime());
                 context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
             }
-            while(context.timerService().currentProcessingTime()>(lastOutput.value()+slide)) {
-                lastOutput.update(lastOutput.value()+slide);
-                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
+            if(context.timerService().currentProcessingTime()>(lastOutput.value()+slide)) {
+                //Thread.sleep(10000);
+                AtomicInteger uniqueVerices = new AtomicInteger(0);
+                AtomicInteger duplicates = new AtomicInteger(0);
+                List<GradoopId> srcVertices =
+                        StreamSupport.stream(edgeList.keys().spliterator(), false)
+                                .collect(Collectors.toList());
+                int currentKey = context.getCurrentKey();
+                for(int key : keys) {
+                    if(key != currentKey) {
+                        int tries = 0;
+                        int maxtries = 10;
+                        while(tries < maxtries) {
+                            try {
+                                MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> state = QS.getState(key);
+                                List<GradoopId> externalSrcVertices = StreamSupport.stream(state.keys().spliterator(), false)
+                                        .collect(Collectors.toList());
+                                collector.collect("Partition: "+key+" had: "+externalSrcVertices.size()+" srcVertices at time: "
+                                        +context.timerService().currentProcessingTime());
+                                break;
+                            } catch (Exception e) {
+                                tries++;
+                                Thread.sleep(100);
+                            }
+                        }
+
+                    }
+                }
+                //lastOutput.update(lastOutput.value()+slide);
+                //context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
             }
             try {
-                sortedEdgeList.get(edge.getSourceId()).put(edge.getTargetId(), edge);
+                edgeList.get(edge.getSourceId()).put(edge.getTargetId(), edge);
+                Thread.sleep(100);
             } catch (NullPointerException e) {
                 HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
                 toPut.put(edge.getTargetId(), edge);
-                sortedEdgeList.put(edge.getSourceId(), toPut);
+                edgeList.put(edge.getSourceId(), toPut);
+                Thread.sleep(100);
             }
         }
 
         @Override
         public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
-            AtomicInteger counter = new AtomicInteger();
+            AtomicInteger uniqueVerices = new AtomicInteger(0);
+            AtomicInteger duplicates = new AtomicInteger(0);
             long beginWindow = timestamp - window;
             //List<Long> processingTimes = new LinkedList<>();
-            List<GradoopId> keys =
-                    StreamSupport.stream(sortedEdgeList.keys().spliterator(), false)
+            List<GradoopId> srcVertices =
+                    StreamSupport.stream(edgeList.keys().spliterator(), false)
                             .collect(Collectors.toList());
-            for(GradoopId key : keys) {
-                //out.collect(Tuple2.of(key, ctx.getCurrentKey()));
-                try {
-                    Set<GradoopId> trgkeys = sortedEdgeList.get(key).keySet();
-                    for (GradoopId key2 : trgkeys) {
-                        //out.collect(Tuple2.of(key2, ctx.getCurrentKey()));
-                        counter.getAndIncrement();
+            int currentKey = ctx.getCurrentKey();
+            for(int key : keys) {
+                if(key != currentKey) {
+                    int tries = 0;
+                    int maxtries = 10;
+                    while(tries < maxtries) {
+                        try {
+                            MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> state = QS.getState(key);
+                            List<GradoopId> externalSrcVertices = StreamSupport.stream(state.keys().spliterator(), false)
+                                    .collect(Collectors.toList());
+                            out.collect("Partition: "+key+" had: "+externalSrcVertices.size()+" srcVertices at time: "
+                            +timestamp);
+                            break;
+                        } catch (Exception e) {
+                            tries++;
+                            Thread.sleep(100);
+                        }
                     }
-                } catch (NullPointerException ignored) {}
+
+                }
+            }
+            /*
+            for(GradoopId srcVertex : srcVertices) {
+                boolean isUnique = true;
+                for(int key : keys) {
+                    if(key != currentKey && isUnique) {
+                        int tries = 0;
+                        int maxtries = 10;
+                        while(tries < maxtries && isUnique) {
+                            try {
+                                HashMap<GradoopId, TemporalEdge> answer = QS.getSrcVertex(key, srcVertex);
+                                if (answer == null) {
+                                    tries = maxtries;
+                                } else {
+                                    duplicates.getAndIncrement();
+                                    System.out.println("We have a map for :" + srcVertex + " of size: " + answer.size());
+                                    tries = maxtries;
+                                    isUnique = false;
+                                }
+                                System.out.println("In GS:"+answer);
+                            } catch (Exception e) {
+                                //System.out.println(e);
+                                tries++;
+                            }
+                        }
+                    }
+                }
+                if(isUnique) {
+                    uniqueVerices.getAndIncrement();
+                }
+                //try {
+                //    Set<GradoopId> trgkeys = sortedEdgeList.get(key).keySet();
+                //    for (GradoopId key2 : trgkeys) {
+                //        //out.collect(Tuple2.of(key2, ctx.getCurrentKey()));
+
+                 //       counter.getAndIncrement();
+                 //   }
+                //} catch (NullPointerException ignored) {}
             }
             //for (GradoopId srcId : keys) {
             //    counter++;
@@ -233,15 +328,17 @@ public class GraphState implements Serializable {
                 //    }
                 //} catch (NullPointerException ignored) {}
             //}
-            int oldCounter = 0;
-            try{
-                    oldCounter = (int)totalEdges.value();}
-            catch (NullPointerException ignored) {}
-            int newValue = oldCounter + counter.intValue();
-            totalEdges.update(newValue);
-            out.collect("The window " + beginWindow + " until " + timestamp + " contained " + counter +
-                    " edges");//, and the following processing times: "+ processingTimes.toString());
-            out.collect("Total edges so far: "+newValue);
+            //int oldCounter = 0;
+            //try{
+            //        oldCounter = (int)totalEdges.value();}
+            //catch (NullPointerException ignored) {}
+            //int newValue = oldCounter + counter.intValue();
+            //totalEdges.update(newValue);
+
+             */
+            //out.collect("The window " + beginWindow + " until " + timestamp + " contained " + uniqueVerices.get() +
+            //        " unique SrcVertices & "+ duplicates.get() +" duplicate SrcVertices");
+            //out.collect("Total edges so far: "+newValue);
 
         }
     }

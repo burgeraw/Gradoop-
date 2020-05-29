@@ -15,6 +15,7 @@ import org.apache.flink.graph.EdgeDirection;
 import org.apache.flink.runtime.dispatcher.SingleJobJobGraphStore;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.graph.StreamGraph;
@@ -552,11 +553,19 @@ keyed on source or target vertex --> good for adjacency list
     }
  */
 
-    public GraphState buildState(StreamExecutionEnvironment env, String strategy, Long windowsize, Long slide)  {
-        return new GraphState(env,
+    public GraphState buildState(QueryState QS,
+                                 String strategy,
+                                 Long windowSize,
+                                 Long slide,
+                                 Integer numPartitions) throws InterruptedException {
+        return new GraphState(QS,
                 this.edges.keyBy(new getPartitionId()),
-                strategy, windowsize, slide);
+                strategy,
+                windowSize,
+                slide,
+                numPartitions);
     }
+
 
     public GraphState buildState(String strategy, Long windowsize, Long slide)  {
         return new GraphState(

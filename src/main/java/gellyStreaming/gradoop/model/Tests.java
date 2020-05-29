@@ -3,6 +3,8 @@ package gellyStreaming.gradoop.model;
 
 import gellyStreaming.gradoop.partitioner.CustomKeySelector;
 import gellyStreaming.gradoop.partitioner.DBHPartitioner;
+import org.apache.commons.logging.LogConfigurationException;
+import org.apache.commons.logging.impl.Log4JLogger;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
@@ -84,11 +86,13 @@ import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.ConfigurationException;
 import org.apache.hadoop.mapreduce.Job;
+import org.apache.log4j.Logger;
 import org.apache.zookeeper.Environment;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.common.model.impl.id.GradoopIdSet;
 import org.gradoop.common.model.impl.properties.Properties;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
+import org.jboss.netty.logging.Log4JLoggerFactory;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -370,19 +374,21 @@ public class Tests {
         Configuration config = new Configuration();
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.getConfig().disableSysoutLogging();
+        //log4j Log4JLoggerFactory.getDefaultFactory();
+        //log4j.logger.org.apache.flink=WARN;
+
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream edges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
                 "src/main/resources/ml-100k/ml-100k-sorted.csv");
-        MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
-                "edgeList",
-                TypeInformation.of(new TypeHint<GradoopId>() {}),
-                TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {})
-        );
-        GraphState state = edges.buildState(env, "TTL", 200L, 100L);
 
-        JobExecutionResult result = env.execute();
 
-        System.out.println("Job took: "+result.getNetRuntime(MILLISECONDS)+ " milliseconds");
+        GraphState state = edges.buildState(new QueryState(), "TTL", 2000L, 1000L, numberOfPartitions);
+
+        JobClient jobClient = env.executeAsync();
+        state.overWriteQS(jobClient.getJobID());
+        System.out.println(jobClient.getJobExecutionResult(ClassLoader.getPlatformClassLoader()).get().getNetRuntime(MILLISECONDS) + " milliseconds");
+        System.out.println("JobID end: "+jobClient.getJobID());
     }
 
     public static void restApi() throws ConfigurationException {
@@ -427,10 +433,10 @@ public class Tests {
         //testLoadingGraph();
         //testGradoopSnapshotStream();
         //testPartitioner();
-        incrementalState();
+        //incrementalState();
         //testState();
         //queryableState();
-        //queryableState2();
+        queryableState2();
         //restApi();
         //triangleEstimator();
         //Thread.sleep(100000);
