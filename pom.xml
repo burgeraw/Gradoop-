@@ -93,32 +93,7 @@
             <artifactId>fastutil</artifactId>
             <version>8.3.1</version>
         </dependency>
-        <dependency>
-            <groupId>log4j</groupId>
-            <artifactId>log4j</artifactId>
-            <version>1.2.17</version>
-        </dependency>
 
-
-
-
-        <!--can be removed in final version-->
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>statefun-flink-harness</artifactId>
-            <version>2.0.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-connector-kafka_2.11</artifactId>
-            <version>1.10.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>statefun-kafka-io</artifactId>
-            <version>2.0.0</version>
-            <scope>provided</scope>
-        </dependency>
 
 
 
