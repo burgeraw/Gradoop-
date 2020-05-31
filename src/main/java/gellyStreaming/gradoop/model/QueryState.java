@@ -44,7 +44,7 @@ public class QueryState {
         this.client = new QueryableStateClient(tmHostname, proxyPort);
         this.descriptor =
                 new MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>>(
-                        "edgeList",
+                        "sortedEdgeList",
                         TypeInformation.of(new TypeHint<GradoopId>() {
                         }).createSerializer(executionConfig),
                         TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
@@ -63,27 +63,19 @@ public class QueryState {
         CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
         client.getKvState(
                 jobID,
-                "edgeList",
+                "sortedEdgeList",
                 key,
                 new TypeHint<Integer>() {
                 },
                 descriptor);
         AtomicReference<Boolean> results = new AtomicReference<>(false);
-        //<HashMap<GradoopId, TemporalEdge>> answer = new AtomicReference<>(new HashMap<>());
         final Tuple1<HashMap<GradoopId, TemporalEdge>> def = new Tuple1<>();
-        //final HashMap<GradoopId, TemporalEdge> def1 = new HashMap<>();
-        resultFuture.thenAccept(response -> {
-            try {
-                //answer.set(response.get(srcVertex));
-                System.out.println("in QS: "+response.get(srcVertex));
-                results.set(true);
-                def.f0 = response.get(srcVertex);
-            } catch (Exception e) {
-                System.out.println("We dont have state");
-                results.set(true);
-            }
-        });
-        //System.out.println(answer.get());
+        try {
+            def.f0 = resultFuture.get().get(srcVertex);
+            results.set(true);
+        }catch (Exception e) {
+            System.out.println("We failed to get key: "+key+" with srcVertex: "+srcVertex+" in QS. Exception: "+e);
+        }
         if(results.get()) {
             return def.f0;
         } else {
@@ -91,8 +83,28 @@ public class QueryState {
         }
     }
 
-    public MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> getState(Integer key) {
-        return null;
+    public MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> getState(Integer key) throws Exception {
+        CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "sortedEdgeList",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptor);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        final Tuple1<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> def = new Tuple1<>();
+        try {
+            def.f0 = resultFuture.get();
+            results.set(true);
+        }catch (Exception e) {
+            System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+        }
+        if(results.get()) {
+            return def.f0;
+        } else {
+            throw new Exception();
+        }
     }
 
     public Boolean edgeExists(Integer key, GradoopId srcVertex, GradoopId trgVertex) {

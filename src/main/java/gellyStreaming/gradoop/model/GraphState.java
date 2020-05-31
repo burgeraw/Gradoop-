@@ -24,6 +24,7 @@ import org.apache.flink.runtime.dispatcher.SingleJobJobGraphStore;
 import org.apache.flink.runtime.query.UnknownKvStateLocation;
 import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+import org.apache.flink.runtime.state.Keyed;
 import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -99,9 +100,6 @@ public class GraphState implements Serializable {
                       org.apache.flink.streaming.api.windowing.time.Time slide,
                       Integer numPartitions) throws IOException, InterruptedException {
         this.input = input;
-        //this.env = env;
-        //this.jobID = jobID;
-        //jobID.getJobGraph().setJobID(this.jobID);
         this.QS = QS;
 
         KeyGen keyGenerator = new KeyGen(numPartitions,
@@ -109,7 +107,6 @@ public class GraphState implements Serializable {
         keys = new int[numPartitions];
         for (int i = 0; i < numPartitions; i++)
             keys[i] = keyGenerator.next(i);
-        //this.jobID = JobID.fromHexString("fd72014d4c864993a2e5a9287b4a9c5d");
 
         switch (strategy) {
             case "EL-event" :
@@ -465,10 +462,10 @@ public class GraphState implements Serializable {
         public Map<GradoopId, HashMap<GradoopId, TemporalEdge>> add(
                 TemporalEdge edge,
                 Map<GradoopId, HashMap<GradoopId, TemporalEdge>> state) {
-            if(!state.containsKey(edge.getSourceId())) {
-                state.put(edge.getSourceId(), new HashMap<GradoopId, TemporalEdge>());
-            }
-            state.get(edge.getSourceId()).put(edge.getTargetId(),edge);
+                if(!state.containsKey(edge.getSourceId())) {
+                    state.put(edge.getSourceId(), new HashMap<GradoopId, TemporalEdge>());
+                }
+                state.get(edge.getSourceId()).put(edge.getTargetId(),edge);
             return state;
         }
 
@@ -497,11 +494,11 @@ public class GraphState implements Serializable {
             @Override
             public void open(Configuration parameters) throws Exception {
                 ELdescriptor = new MapStateDescriptor<>(
-                        "edgeList",
+                        "sortedEdgeList",
                         TypeInformation.of(new TypeHint<GradoopId>() {}),
                         TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {})
                 );
-                ELdescriptor.setQueryable("edgeList");
+                ELdescriptor.setQueryable("sortedEdgeList");
                 sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
                 ValueStateDescriptor<java.lang.Integer> descriptor = new ValueStateDescriptor<java.lang.Integer>(
                         "totalEdges",
@@ -530,8 +527,8 @@ public class GraphState implements Serializable {
                         e.printStackTrace();
                     }
                 });
-                AtomicInteger total = new AtomicInteger();
-                AtomicInteger duplicates = new AtomicInteger();
+                AtomicInteger unique = new AtomicInteger(0);
+                AtomicInteger duplicates = new AtomicInteger(0);
 
                 AtomicInteger counter = new AtomicInteger(0);
                 while(!QS.isInitilized()) {
@@ -541,32 +538,32 @@ public class GraphState implements Serializable {
                 if(counter.get()>0) {
                     System.out.println("Waited " + (counter.get() * 100) + " milliseconds");
                 }
+                Thread.sleep(100);
+
 
                 for(GradoopId srcId : sortedEdgeList.keys()) {
+                    boolean uniqueVertex = true;
                     for(java.lang.Integer otherkey : keys) {
                         if(otherkey != key) {
-                            //System.out.println("checking key: "+otherkey+" in partition: "+key);
-                            //QS = new QueryState(env.getStreamGraph("myTests").getJobGraph().getJobID());
-                            HashMap<GradoopId, TemporalEdge> answer = QS.getSrcVertex(otherkey, srcId);
-                            //System.out.println(answer);
-                            int tries = 100;
-                            while(tries>0 && answer == null) {
-                                answer = QS.getSrcVertex(otherkey, srcId);
-                                //Thread.sleep(100);
-                                tries--;
-                            }
-                            System.out.println("tries: " +(100-tries));
-                            if(answer != null) {
-                                duplicates.getAndIncrement();
-                                break;
+                            try {
+                                HashMap<GradoopId, TemporalEdge> answer = QS.getState(otherkey).get(srcId);
+                                if (answer != null) {
+                                    duplicates.getAndIncrement();
+                                    uniqueVertex = false;
+                                    break;
+                                }
+                            } catch (Exception e) {
+                                System.out.println("We failed to get state for key: "+key+" and srcVertex: "+srcId+" in GS. Exception: "+e);
                             }
                         }
-
                     }
-                    total.getAndIncrement();
+                    if(uniqueVertex) {
+                        unique.getAndIncrement();
+                    }
                 }
-                collector.collect("We found "+total+" sourceVertices in this partition of which " +
-                        duplicates+" are also in other partitions.");
+                collector.collect("We found "+unique.get()+" unique sourceVertices in partition " + key +
+                        " and we found "+duplicates+" srcVertices that are also in other partitions."+
+                        "This was at maxwindow: " + context.window().maxTimestamp());
 
                 /*
             //Used to check if all edges get properly added to state.

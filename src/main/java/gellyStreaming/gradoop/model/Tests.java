@@ -1,6 +1,7 @@
 package gellyStreaming.gradoop.model;
 
 
+import akka.stream.impl.fusing.MapAsync;
 import gellyStreaming.gradoop.partitioner.CustomKeySelector;
 import gellyStreaming.gradoop.partitioner.DBHPartitioner;
 import org.apache.commons.logging.LogConfigurationException;
@@ -8,6 +9,7 @@ import org.apache.commons.logging.impl.Log4JLogger;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.functions.RuntimeContext;
@@ -68,6 +70,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.functions.TimestampAssigner;
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
 import org.apache.flink.streaming.api.graph.StreamGraph;
@@ -424,6 +427,29 @@ public class Tests {
         env.execute();
     }
 
+    public static void queryableStateAndVertexCounting() throws Exception {
+        int numberOfPartitions = 2;
+        Configuration config = new Configuration();
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setParallelism(numberOfPartitions);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+                "src/main/resources/ml-100k/ml-100k-sorted.csv");
+        //SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
+
+        QueryState QS = new QueryState();
+
+        GraphState gs = tempEdges.buildState(QS,"EL-proc",
+                org.apache.flink.streaming.api.windowing.time.Time.of(3000, MILLISECONDS),
+                org.apache.flink.streaming.api.windowing.time.Time.of(3000, MILLISECONDS),
+                numberOfPartitions);
+        JobClient jobClient = env.executeAsync();
+        gs.overWriteQS(jobClient.getJobID());
+        System.out.println(jobClient.getJobExecutionResult(ClassLoader.getPlatformClassLoader()).get().getNetRuntime()
+        +" was the time it took.");
+    }
+
 
 
     public static void main(String[] args) throws Exception {
@@ -436,9 +462,10 @@ public class Tests {
         //incrementalState();
         //testState();
         //queryableState();
-        queryableState2();
+        //queryableState2();
         //restApi();
         //triangleEstimator();
+        queryableStateAndVertexCounting();
         //Thread.sleep(100000);
         Runtime rt2 = Runtime.getRuntime();
         long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;
@@ -530,7 +557,30 @@ public class Tests {
         //    }
         //})
         ;
-        return new SimpleTemporalEdgeStream(tempEdges, env, graphId);
+        SourceFunction<TemporalEdge> infinite = new SourceFunction<TemporalEdge>() {
+            @Override
+            public void run(SourceContext<TemporalEdge> sourceContext) throws Exception {
+                while(true) {
+                    sourceContext.collect(new TemporalEdge(null, null, null, null,
+                            null, null, null, null));
+                    Thread.sleep(100);
+                }
+            }
+            @Override
+            public void cancel() {
+
+            }
+        };
+        DataStream<TemporalEdge> makeInfinite =  env.addSource(infinite);
+        DataStream<TemporalEdge> finalEdges = tempEdges.union(makeInfinite)
+                .filter(new FilterFunction<TemporalEdge>() {
+            @Override
+            public boolean filter(TemporalEdge edge) throws Exception {
+                return edge.getId() != null;
+            }
+        });
+
+        return new SimpleTemporalEdgeStream(finalEdges, env, graphId);
     }
 
     static DataStream<TemporalEdge> getSampleEdgeStream(StreamExecutionEnvironment env) {
