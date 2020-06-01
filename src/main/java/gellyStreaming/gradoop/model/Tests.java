@@ -428,22 +428,23 @@ public class Tests {
     }
 
     public static void queryableStateAndVertexCounting() throws Exception {
-        int numberOfPartitions = 2;
+        int numberOfPartitions = 4;
         Configuration config = new Configuration();
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                "src/main/resources/ml-100k/ml-100k-sorted.csv");
-        //SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
+                "src/main/resources/aves-sparrow-social.edges");
+        SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
 
         QueryState QS = new QueryState();
 
-        GraphState gs = tempEdges.buildState(QS,"EL-proc",
-                org.apache.flink.streaming.api.windowing.time.Time.of(3000, MILLISECONDS),
-                org.apache.flink.streaming.api.windowing.time.Time.of(3000, MILLISECONDS),
-                numberOfPartitions);
+        //GraphState gs = tempEdges.buildState(QS,"EL-proc",
+        //        org.apache.flink.streaming.api.windowing.time.Time.of(1000, MILLISECONDS),
+        //        org.apache.flink.streaming.api.windowing.time.Time.of(1000, MILLISECONDS),
+        //        numberOfPartitions);
+        GraphState gs = doubleEdges.buildState(QS, "TTL", 10000L, 10000L, numberOfPartitions);
         JobClient jobClient = env.executeAsync();
         gs.overWriteQS(jobClient.getJobID());
         System.out.println(jobClient.getJobExecutionResult(ClassLoader.getPlatformClassLoader()).get().getNetRuntime()
@@ -534,15 +535,16 @@ public class Tests {
             @Override
             public TemporalEdge map(Tuple2<Edge<Long, String>, Integer> edge) throws Exception {
                 Map<String, Object> properties = new HashMap<>();
-                Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
+                //Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
                 Long timestamp = Long.parseLong(edge.f0.f2.split(",")[1]);
-                properties.put("rating", rating);
+                //properties.put("rating", rating);
                 properties.put("partitionID", edge.f1);
                 return new TemporalEdge(
                         GradoopId.get(),
                         "watched",
                         new GradoopId(0, edge.f0.getSource().intValue(), (short) 0, 0),
-                        new GradoopId(0, edge.f0.getTarget().intValue(), (short) 1, 0),
+                        new GradoopId(0, edge.f0.getTarget().intValue(), (short) 0, 0),
+                        //new GradoopId(0, edge.f0.getTarget().intValue(), (short) 1, 0),
                         Properties.createFromMap(properties),
                         graphId,
                         timestamp, //       (valid) starting time
@@ -775,7 +777,8 @@ public class Tests {
                 .map(new MapFunction<String, Edge<Long, String>>() {
                     @Override
                     public Edge<Long, String> map(String s) throws Exception {
-                        String[] fields = s.split(",");
+                        //String[] fields = s.split(",");
+                        String[] fields = s.split("\\s");
                         long src = Long.parseLong(fields[0]);
                         long trg = Long.parseLong(fields[1]);
                         String value = fields[2] + "," + fields[3];

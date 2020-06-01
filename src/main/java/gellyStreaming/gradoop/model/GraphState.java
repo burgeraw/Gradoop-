@@ -179,14 +179,14 @@ public class GraphState implements Serializable {
                     .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired) //default
                     .build();
             MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
-                    "edgeList",
+                    "sortedEdgeList",
                     TypeInformation.of(new TypeHint<GradoopId>() {
                     }),
                     TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
                     })
             );
             //ELdescriptor.enableTimeToLive(ttlConfig);
-            ELdescriptor.setQueryable("edgeList");
+            ELdescriptor.setQueryable("sortedEdgeList");
             edgeList = getRuntimeContext().getMapState(ELdescriptor);
             ValueStateDescriptor<Long> descriptor = new ValueStateDescriptor<Long>(
                     "lastOutputTime", Long.class);
@@ -207,7 +207,11 @@ public class GraphState implements Serializable {
                 lastOutput.update(context.timerService().currentProcessingTime());
                 context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
             }
-            if(context.timerService().currentProcessingTime()>(lastOutput.value()+slide)) {
+            while(context.timerService().currentProcessingTime()>(lastOutput.value()+slide)) {
+                lastOutput.update(lastOutput.value()+slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
+            }
+                /*
                 //Thread.sleep(10000);
                 AtomicInteger uniqueVerices = new AtomicInteger(0);
                 AtomicInteger duplicates = new AtomicInteger(0);
@@ -238,14 +242,16 @@ public class GraphState implements Serializable {
                 //lastOutput.update(lastOutput.value()+slide);
                 //context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
             }
+
+                 */
             try {
                 edgeList.get(edge.getSourceId()).put(edge.getTargetId(), edge);
-                Thread.sleep(100);
+                //Thread.sleep(100);
             } catch (NullPointerException e) {
                 HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
                 toPut.put(edge.getTargetId(), edge);
                 edgeList.put(edge.getSourceId(), toPut);
-                Thread.sleep(100);
+                //Thread.sleep(100);
             }
         }
 
@@ -259,6 +265,7 @@ public class GraphState implements Serializable {
                     StreamSupport.stream(edgeList.keys().spliterator(), false)
                             .collect(Collectors.toList());
             int currentKey = ctx.getCurrentKey();
+            out.collect("Local partition "+currentKey+" had "+ srcVertices.size()+" srcVertices at time: "+timestamp);
             for(int key : keys) {
                 if(key != currentKey) {
                     int tries = 0;
@@ -268,17 +275,24 @@ public class GraphState implements Serializable {
                             MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> state = QS.getState(key);
                             List<GradoopId> externalSrcVertices = StreamSupport.stream(state.keys().spliterator(), false)
                                     .collect(Collectors.toList());
-                            out.collect("Partition: "+key+" had: "+externalSrcVertices.size()+" srcVertices at time: "
+                            out.collect("External partition: "+key+" had: "+externalSrcVertices.size()+" srcVertices at time: "
                             +timestamp);
+                            srcVertices.addAll(externalSrcVertices);
                             break;
                         } catch (Exception e) {
                             tries++;
-                            Thread.sleep(100);
+                            System.out.println(tries);
+                            //Thread.sleep(100);
                         }
                     }
 
                 }
             }
+            HashSet<GradoopId> distinct = new HashSet<>();
+            for(GradoopId id : srcVertices) {
+                distinct.add(id);
+            }
+            out.collect("Together the partitions have "+distinct.size()+" distinct vertices.");
             /*
             for(GradoopId srcVertex : srcVertices) {
                 boolean isUnique = true;
@@ -561,10 +575,14 @@ public class GraphState implements Serializable {
                         unique.getAndIncrement();
                     }
                 }
-                collector.collect("We found "+unique.get()+" unique sourceVertices in partition " + key +
+                String output = "We found "+unique.get()+" unique sourceVertices in partition " + key +
                         " and we found "+duplicates+" srcVertices that are also in other partitions."+
-                        "This was at maxwindow: " + context.window().maxTimestamp());
-
+                        "This was at maxwindow: " + context.window().maxTimestamp();
+                System.out.println(output);
+                //collector.collect("We found "+unique.get()+" unique sourceVertices in partition " + key +
+                //        " and we found "+duplicates+" srcVertices that are also in other partitions."+
+                //        "This was at maxwindow: " + context.window().maxTimestamp());
+                collector.collect(output);
                 /*
             //Used to check if all edges get properly added to state.
                 AtomicInteger counter = new AtomicInteger();
