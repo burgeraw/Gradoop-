@@ -11,3 +11,9 @@ out/
 target/classes/ml-100k/
 
 output/
+
+target/surefire-reports/
+
+target/maven-status/maven-compiler-plugin/compile/default-compile/
+
+target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/

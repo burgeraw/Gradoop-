@@ -566,6 +566,15 @@ keyed on source or target vertex --> good for adjacency list
                 numPartitions);
     }
 
+    public GraphState buildState(QueryState QS,
+                                 String strategy,
+                                 Integer numPartitions) throws InterruptedException {
+        return new GraphState(QS,
+                this.edges.keyBy(new getPartitionId()),
+                strategy,
+                numPartitions);
+    }
+
 
     public GraphState buildState(String strategy, Long windowsize, Long slide)  {
         return new GraphState(

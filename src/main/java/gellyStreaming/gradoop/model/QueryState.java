@@ -14,6 +14,7 @@ import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -23,6 +24,7 @@ public class QueryState {
 
     private QueryableStateClient client;
     private MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
+    private MapStateDescriptor<GradoopId, Integer> descriptor2;
     private JobID jobID;
     private boolean initilized = false;
 
@@ -48,6 +50,14 @@ public class QueryState {
                         TypeInformation.of(new TypeHint<GradoopId>() {
                         }).createSerializer(executionConfig),
                         TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
+                        }).createSerializer(executionConfig)
+                );
+        this.descriptor2 =
+                new MapStateDescriptor<GradoopId, Integer>(
+                        "vertexDegree",
+                        TypeInformation.of(new TypeHint<GradoopId>() {
+                        }).createSerializer(executionConfig),
+                        TypeInformation.of(new TypeHint<Integer>() {
                         }).createSerializer(executionConfig)
                 );
         System.out.println("jobid: " + jobID.toString());
@@ -107,37 +117,56 @@ public class QueryState {
         }
     }
 
-    public Boolean edgeExists(Integer key, GradoopId srcVertex, GradoopId trgVertex) {
-        return null;
-    }
-
-    /*
-
-        while(true) {
-            for (int key : keys) {
-                CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
-                        client.getKvState(
-                                jobID,
-                                "queryableState",
-                                key,
-                                new TypeHint<Integer>(){},
-                                descriptor);
-                resultFuture.thenAccept(response -> {
-                    try {
-                        GradoopId gradoopId = new GradoopId(0, 196, (short)0, 0);
-                        System.out.println(response.get(gradoopId));
-                        System.out.println("We got state");
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        System.out.println("We dont have state");
-                    }
-                });
-            }
-            //Thread.sleep(100);
+    public Boolean edgeExists(Integer key, GradoopId srcVertex, GradoopId trgVertex) throws Exception {
+        CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "sortedEdgeList",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptor);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        AtomicReference<Boolean> answer = new AtomicReference<>(null);
+        try {
+            answer.set(resultFuture.get().get(srcVertex).containsKey(trgVertex));
+            results.set(true);
+        } catch (NullPointerException e) {
+            answer.set(false);
+            results.set(true);
+        } catch (Exception e) {
+            System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
         }
-        //client.shutdownAndWait();
+        if(results.get()) {
+            return answer.get();
+        } else {
+            throw new Exception();
+        }
     }
-     */
+
+    public MapState<GradoopId, Integer> getVertexDegree(int key) throws Exception {
+        CompletableFuture<MapState<GradoopId, Integer>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "vertexDegree",
+                        key,
+                        new TypeHint<Integer>() {},
+                        descriptor2);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        final Tuple1<MapState<GradoopId, Integer>> def = new Tuple1<>();
+        try {
+            def.f0 = resultFuture.get();
+            results.set(true);
+        }catch (Exception e) {
+            System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+        }
+        if(results.get()) {
+            return def.f0;
+        } else {
+            throw new Exception();
+        }
+    }
+
 
     public void initialize2(JobID jobID) throws UnknownHostException {
         //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
@@ -160,49 +189,33 @@ public class QueryState {
         System.out.println("tmHostname: " + tmHostname);
     }
 
-    public MapState<Integer, Integer> getState2(Integer key) throws Exception {
+    public MapState<GradoopId, HashSet<GradoopId>> getState2(Integer key) throws Exception {
         ExecutionConfig executionConfig = new ExecutionConfig();
-
-        MapStateDescriptor<Integer, Integer> descriptor2 =
-                new MapStateDescriptor<Integer, Integer>(
-                        "state",
-                        TypeInformation.of(new TypeHint<Integer>() {
+        MapStateDescriptor<GradoopId, HashSet<GradoopId>> descriptor3 =
+                new MapStateDescriptor<GradoopId, HashSet<GradoopId>>(
+                        "adjacencyList",
+                        TypeInformation.of(new TypeHint<GradoopId>() {
                         }).createSerializer(executionConfig),
-                        TypeInformation.of(new TypeHint<Integer>() {
+                        TypeInformation.of(new TypeHint<HashSet<GradoopId>>() {
                         }).createSerializer(executionConfig)
                 );
-        CompletableFuture<MapState<Integer, Integer>> resultFuture =
+        CompletableFuture<MapState<GradoopId, HashSet<GradoopId>>> resultFuture =
                 client.getKvState(
                         jobID,
-                        "state",
+                        "adjacencyList",
                         key,
                         new TypeHint<Integer>() {
                         },
-                        descriptor2);
+                        descriptor3);
         AtomicReference<Boolean> results = new AtomicReference<>(false);
-        final Tuple1<MapState<Integer, Integer>> def = new Tuple1<>();
+        final Tuple1<MapState<GradoopId, HashSet<GradoopId>>> def = new Tuple1<>();
         try{
             def.f0 = resultFuture.get();
             results.set(true);
         } catch (Exception e) {
-            System.out.println(e);
+            System.out.println("In QS: "+e);
         }
-        /*
-        resultFuture.thenAccept(response -> {
-            try {
-                //answer.set(response.get(srcVertex));
-                //System.out.println("in QS: "+response.get(key).toString());
-                results.set(true);
-                def.f0 = response;
-                //System.out.println("in QS def.f0: "+def.f0);
-            } catch (Exception e) {
-                System.out.println("We dont have state");
-                results.set(true);
-            }
-        });
 
-         */
-        //System.out.println(answer.get());
         if(results.get()) {
             return def.f0;
         } else {

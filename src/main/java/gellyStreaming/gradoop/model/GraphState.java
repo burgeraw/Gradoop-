@@ -15,6 +15,7 @@ import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.graph.library.clustering.directed.TriangleListing;
 import org.apache.flink.hadoop.shaded.org.apache.http.HttpResponse;
 import org.apache.flink.hadoop.shaded.org.apache.http.client.HttpClient;
 import org.apache.flink.hadoop.shaded.org.apache.http.client.methods.HttpGet;
@@ -37,6 +38,7 @@ import org.apache.flink.streaming.api.windowing.windows.Window;
 import org.apache.flink.util.Collector;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
+import scala.Int;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -150,11 +152,442 @@ public class GraphState implements Serializable {
                     .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
             case "TTL" : input.process(new createEdgeList4(windowSize, slide))
                     .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+            case "triangle" : input.process(new TriangleCounting(windowSize, slide))
+                    .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+            case "vertices" : input.process(new CountingVertices(windowSize, slide))
+                    .print();
+                    //.writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+        }
+    }
+
+    public GraphState(QueryState QS,
+                      KeyedStream<TemporalEdge, Integer> input,
+                      String strategy,
+                      Integer numPartitions) throws InterruptedException {
+        this.input = input;
+        this.QS = QS;
+        KeyGen keyGenerator = new KeyGen(numPartitions,
+                KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
+        keys = new int[numPartitions];
+        for (int i = 0; i < numPartitions; i++)
+            keys[i] = keyGenerator.next(i);
+        //input.process(new CountTrianglesStream()).print();
+
+        switch (strategy) {
+            case "triangles" : input.process(new CountTrianglesStream()) //.print();
+                .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
         }
     }
 
     public void overWriteQS(JobID jobID) throws UnknownHostException {
         this.QS.initialize(jobID);
+    }
+
+    public static class CountTrianglesStream extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+        private MapState<GradoopId, HashSet<GradoopId>> adjacencyList;
+        private ValueState<Integer> triangleCount;
+
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            MapStateDescriptor<GradoopId, HashSet<GradoopId>> descriptor = new MapStateDescriptor<GradoopId, HashSet<GradoopId>>(
+                    "adjacencyList",
+                    TypeInformation.of(new TypeHint<GradoopId>() {}),
+                    TypeInformation.of(new TypeHint<HashSet<GradoopId>>() {}));
+            descriptor.setQueryable("adjacencyList");
+            adjacencyList = getRuntimeContext().getMapState(descriptor);
+            ValueStateDescriptor<Integer> descriptor1 = new ValueStateDescriptor<Integer>(
+                    "triangleCount",
+                    Integer.class);
+            triangleCount = getRuntimeContext().getState(descriptor1);
+        }
+
+        @Override
+        public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
+            if(triangleCount.value() == null) {
+                triangleCount.update(0);
+            }
+            while(!QS.isInitilized()) {
+                Thread.sleep(100);
+            }
+            GradoopId src = edge.getSourceId();
+            GradoopId trg = edge.getTargetId();
+
+            try{
+                adjacencyList.get(src).add(trg);
+            } catch (NullPointerException e) {
+                HashSet<GradoopId> toPut = new HashSet<GradoopId>();
+                toPut.add(trg);
+                adjacencyList.put(src, toPut);
+            }
+            try{
+                adjacencyList.get(trg).add(src);
+            } catch (NullPointerException e) {
+                HashSet<GradoopId> toPut = new HashSet<GradoopId>();
+                toPut.add(src);
+                adjacencyList.put(trg, toPut);
+            }
+
+            HashSet<GradoopId> neighboursSrc = adjacencyList.get(src);
+            HashSet<GradoopId> neighboursTrg = adjacencyList.get(trg);
+            int currentKey = context.getCurrentKey();
+            for(int key : keys) {
+                if (key != currentKey) {
+                    boolean retry = true;
+                    int numRetries = 0;
+                    while (retry && numRetries < 10) {
+                        try {
+                            try {
+                                neighboursSrc.addAll(QS.getState2(key).get(src));
+                            } catch (NullPointerException ignored) {
+                            }
+                            try {
+                                neighboursTrg.addAll(QS.getState2(key).get(trg));
+                            } catch (NullPointerException ignored) {
+                            }
+                            retry = false;
+                        } catch (Exception e) {
+                            numRetries++;
+                            if (numRetries == 10) {
+                                System.out.println("We failed to get state after 10 tries for key: " + key + " and srcVertex: " +
+                                        edge.getSourceId() + " and trgVertex: " + edge.getTargetId());
+                            }
+                        }
+                    }
+                }
+            }
+            AtomicInteger triangles = new AtomicInteger(0);
+            if(neighboursSrc.size() < neighboursTrg.size()) {
+                for(GradoopId id : neighboursSrc) {
+                    if(neighboursTrg.contains(id) && id != src && id != trg) {
+                        triangles.getAndIncrement();
+                    }
+                }
+            } else {
+                for(GradoopId id : neighboursTrg) {
+                    if(neighboursSrc.contains(id) && id != src && id != trg) {
+                        triangles.getAndIncrement();
+                    }
+                }
+            }
+            triangleCount.update(triangleCount.value()+triangles.get());
+            collector.collect("We found "+triangles.get()+" new triangles, making the total "+triangleCount.value());
+        }
+    }
+
+    public static class CountingVertices extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+
+        private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
+        private final Long window;
+        private final Long slide;
+        private transient ValueState<Long> lastOutput;
+        private transient ValueState<Long> lastTimerPull;
+        private transient ValueState<Integer> edgesSinceLastTimer;
+        private transient MapState<GradoopId, Integer> vertexDegree;
+
+        public CountingVertices(Long window, Long slide) {
+            this.window = window;
+            this.slide = slide;
+        }
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
+                    "sortedEdgeList",
+                    TypeInformation.of(new TypeHint<GradoopId>() {
+                    }),
+                    TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
+                    })
+            );
+            ELdescriptor.setQueryable("sortedEdgeList");
+            sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
+            ValueStateDescriptor<Long> descriptor = new ValueStateDescriptor<Long>(
+                    "lastOutputTime", Long.class);
+            lastOutput = getRuntimeContext().getState(descriptor);
+            ValueStateDescriptor<Long> descriptor1 = new ValueStateDescriptor<Long>(
+                    "lastTimerPull", Long.class);
+            lastTimerPull = getRuntimeContext().getState(descriptor1);
+            ValueStateDescriptor<Integer> descriptor2 = new ValueStateDescriptor<Integer>(
+                    "edgesSinceTimer", Integer.class);
+            edgesSinceLastTimer = getRuntimeContext().getState(descriptor2);
+            MapStateDescriptor<GradoopId, Integer> descriptor3 = new MapStateDescriptor<GradoopId, Integer>(
+                    "vertexDegree", GradoopId.class, Integer.class);
+            descriptor3.setQueryable("vertexDegree");
+            vertexDegree = getRuntimeContext().getMapState(descriptor3);
+        }
+
+        @Override
+        public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
+            if(lastOutput.value() == null) {
+                while (!QS.isInitilized()) {
+                    Thread.sleep(100);
+                }
+                long currentTime = context.timerService().currentProcessingTime();
+                lastOutput.update(currentTime);
+                lastTimerPull.update(currentTime);
+                edgesSinceLastTimer.update(0);
+                //lastOutput.update(context.timestamp());
+                context.timerService().registerProcessingTimeTimer(lastOutput.value() + slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value() + slide + slide);
+
+            }
+            edgesSinceLastTimer.update(edgesSinceLastTimer.value()+1);
+            if(edgesSinceLastTimer.value() > 50) {
+                lastTimerPull.update(context.timerService().currentProcessingTime());
+                edgesSinceLastTimer.update(0);
+            }
+            long currentTime = lastTimerPull.value();
+
+            while(currentTime>(lastOutput.value()+slide)) {
+                lastOutput.update(lastOutput.value()+slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide+slide);
+            }
+
+            edge.setValidTo(currentTime+window);
+            GradoopId source = edge.getSourceId();
+            GradoopId target = edge.getTargetId();
+            int oldDegree = 0;
+            try {
+                sortedEdgeList.get(source).put(target, edge);
+                oldDegree = vertexDegree.get(source);
+            } catch (NullPointerException e) {
+                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
+                toPut.put(target, edge);
+                sortedEdgeList.put(source, toPut);
+            }
+            vertexDegree.put(source, oldDegree+1);
+            oldDegree = 0;
+            try {
+                sortedEdgeList.get(target).put(source, edge);
+                oldDegree = vertexDegree.get(target);
+            } catch (NullPointerException e) {
+                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
+                toPut.put(source, edge);
+                sortedEdgeList.put(target, toPut);
+            }
+            vertexDegree.put(target, oldDegree+1);
+        }
+
+        @Override
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+            List<GradoopId> srcVertices =
+                    StreamSupport.stream(vertexDegree.keys().spliterator(), false)
+                            .collect(Collectors.toList());
+            int currentKey = ctx.getCurrentKey();
+            out.collect("Local partition "+currentKey+" had "+ srcVertices.size()+" srcVertices at time: "+timestamp);
+            HashSet<GradoopId> distinct = new HashSet<>();
+            distinct.addAll(srcVertices);
+            for(int key : keys) {
+                if(key != currentKey) {
+                    int tries = 0;
+                    int maxtries = 10;
+                    while(tries < maxtries) {
+                        try {
+                            MapState<GradoopId, Integer> state = QS.getVertexDegree(key);
+                            List<GradoopId> externalSrcVertices = StreamSupport.stream(state.keys().spliterator(), false)
+                                    .collect(Collectors.toList());
+                            out.collect("External partition: "+key+" had: "+externalSrcVertices.size()+" srcVertices at time: "
+                                    +timestamp);
+                            distinct.addAll(externalSrcVertices);
+                            tries = maxtries;
+                        } catch (Exception e) {
+                            tries++;
+                            System.out.println(tries);
+                            //Thread.sleep(100);
+                        }
+                    }
+                }
+            }
+            out.collect("Together the partitions have "+distinct.size()+" distinct vertices.");
+        }
+    }
+
+    public static class TriangleCounting extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+        private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
+        private final Long window;
+        private final Long slide;
+        private transient ValueState<Long> lastOutput;
+        private transient ValueState<Integer> triangleCount;
+        private transient ValueState<Integer> edgeCountSinceTimestamp;
+        private transient ValueState<Long> lastTimestamp;
+
+        public TriangleCounting(Long window, Long slide) {
+            this.window = window;
+            this.slide = slide;
+        }
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
+                    "sortedEdgeList",
+                    TypeInformation.of(new TypeHint<GradoopId>() {
+                    }),
+                    TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
+                    })
+            );
+            ELdescriptor.setQueryable("sortedEdgeList");
+            sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
+            ValueStateDescriptor<Long> descriptor = new ValueStateDescriptor<Long>(
+                    "lastOutputTime", Long.class);
+            lastOutput = getRuntimeContext().getState(descriptor);
+            ValueStateDescriptor<Integer> descriptor1 = new ValueStateDescriptor<Integer>(
+                    "triangleCount", Integer.class);
+            triangleCount = getRuntimeContext().getState(descriptor1);
+            ValueStateDescriptor<Integer> descriptor2 = new ValueStateDescriptor<Integer>(
+                    "edgeCountSinceTimestamp", Integer.class);
+            edgeCountSinceTimestamp = getRuntimeContext().getState(descriptor2);
+            ValueStateDescriptor<Long> descriptor3 = new ValueStateDescriptor<Long>(
+                    "lastTimestamp", Long.class);
+            lastTimestamp = getRuntimeContext().getState(descriptor3);
+        }
+
+        @Override
+        public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
+            // Make first timer, and trianglecount & make sure Query state is properly initilized
+            if(lastTimestamp.value() == null) {
+                lastTimestamp.update(context.timerService().currentProcessingTime());
+            }
+            long currentTime = lastTimestamp.value();
+            int currentKey = context.getCurrentKey();
+            if(lastOutput.value() == null) {
+                while(!QS.isInitilized()) {
+                    Thread.sleep(100);
+                }
+                /*
+                boolean wait = true;
+                while(wait) {
+                    try{
+                        for(int key: keys) {
+                            QS.getState(key);
+                        }
+                        wait = false;
+                    } catch (Exception ignored) {}
+                }
+                 */
+                // Helps to ensure all thread have initialized state.
+                //Thread.sleep(1000);
+                //System.out.println("All QS working");
+                lastOutput.update(currentTime);
+                //lastOutput.update(context.timestamp());
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide+slide);
+            }
+            if(triangleCount.value() == null) {
+                triangleCount.update(0);
+            }
+            if(edgeCountSinceTimestamp.value() == null) {
+                edgeCountSinceTimestamp.update(0);
+            }
+
+            // Make new timer if last has expired.
+            // prev. current processing time
+            while(currentTime>(lastOutput.value()+slide)) {
+                lastOutput.update(lastOutput.value()+slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide+slide);
+                currentTime = context.timerService().currentProcessingTime();
+                lastTimestamp.update(currentTime);
+                edgeCountSinceTimestamp.update(0);
+            }
+
+            edgeCountSinceTimestamp.update(edgeCountSinceTimestamp.value()+1);
+            if(edgeCountSinceTimestamp.value() == 50) {
+                edgeCountSinceTimestamp.update(0);
+                lastTimestamp.update(context.timerService().currentProcessingTime());
+            }
+
+            // Process edge, put in state, in both directions
+            edge.setValidTo(currentTime+window);
+            GradoopId source = edge.getSourceId();
+            GradoopId target = edge.getTargetId();
+            try {
+                sortedEdgeList.get(source).put(target, edge);
+            } catch (NullPointerException e) {
+                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
+                toPut.put(target, edge);
+                sortedEdgeList.put(source, toPut);
+            }
+            try {
+                sortedEdgeList.get(target).put(source, edge);
+            } catch (NullPointerException e) {
+                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
+                toPut.put(source, edge);
+                sortedEdgeList.put(target, toPut);
+            }
+
+            //Thread.sleep(100);
+            // Check if edge forms triangle
+            //int currentKey = context.getCurrentKey();
+            HashMap<GradoopId, TemporalEdge> neighboursSrc = sortedEdgeList.get(edge.getSourceId());
+            HashMap<GradoopId, TemporalEdge> neighboursTrg = sortedEdgeList.get(edge.getTargetId());
+            for(int key : keys) {
+                if(key != currentKey) {
+                    boolean retry = true;
+                    int numRetries = 0;
+                    while(retry && numRetries<10) {
+                        try {
+                            try {
+                                neighboursSrc.putAll(QS.getSrcVertex(key, edge.getSourceId()));
+                            } catch (NullPointerException ignored) {}
+                            try {
+                                neighboursTrg.putAll(QS.getSrcVertex(key, edge.getTargetId()));
+                            } catch (NullPointerException ignored) {}
+                            retry = false;
+                        }
+                        catch (Exception e) {
+                            System.out.println("In triangle count for key: "+key+ " and srcVertex: "+
+                                    edge.getSourceId()+" and trgVertex: "+edge.getTargetId()+" we have: "+ e);
+                            numRetries++;
+                            if(numRetries==10) {
+                                System.out.println("We failed to get state after 10 tries for key: "+key+ " and srcVertex: "+
+                                        edge.getSourceId()+" and trgVertex: "+edge.getTargetId());
+                            }
+                        }
+                    }
+                }
+            }
+            //long currentTime = context.timerService().currentProcessingTime();
+            AtomicInteger newTriangles = new AtomicInteger(0);
+            if(neighboursSrc.size() < neighboursTrg.size()) {
+                for(Map.Entry<GradoopId, TemporalEdge> neighbour : neighboursSrc.entrySet()) {
+                    if(neighbour.getValue().getValidTo() > currentTime &&
+                            neighboursTrg.containsKey(neighbour.getKey()) &&
+                            neighboursTrg.get(neighbour.getKey()).getValidTo() > currentTime) {
+                        //triangleCount.update(triangleCount.value() + 1);
+                        newTriangles.getAndIncrement();
+                    }
+                }
+            } else {
+                for(Map.Entry<GradoopId, TemporalEdge> neighbour : neighboursTrg.entrySet()) {
+                    if(neighbour.getValue().getValidTo() > currentTime &&
+                            neighboursSrc.containsKey(neighbour.getKey()) &&
+                            neighboursSrc.get(neighbour.getKey()).getValidTo() > currentTime) {
+                        //triangleCount.update(triangleCount.value() + 1);
+                        newTriangles.getAndIncrement();
+                    }
+                }
+            }
+            //int oldvalue = triangleCount.value();
+            //int newvalue = oldvalue+newTriangles.get();
+            triangleCount.update(triangleCount.value()+newTriangles.get());
+        }
+
+        @Override
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+            out.collect("At time: "+timestamp+" we have found a total of "+triangleCount.value()+" triangles");
+            for(GradoopId srcId : sortedEdgeList.keys()) {
+                for(GradoopId trgId : sortedEdgeList.get(srcId).keySet()) {
+                    if(sortedEdgeList.get(srcId).get(trgId).getValidTo() < timestamp) {
+                        sortedEdgeList.get(srcId).remove(trgId);
+                    }
+                    if(sortedEdgeList.get(srcId).isEmpty()) {
+                        sortedEdgeList.remove(srcId);
+                    }
+                }
+            }
+            out.collect("The timer took " +(ctx.timerService().currentProcessingTime()-timestamp)+" ms to execute");
+        }
     }
 
     public static class createEdgeList4 extends KeyedProcessFunction<Integer, TemporalEdge, String> {

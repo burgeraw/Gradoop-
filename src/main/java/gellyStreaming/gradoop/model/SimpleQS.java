@@ -94,7 +94,7 @@ public class SimpleQS {
                     int tries = 0;
                     while(tries < 10) {
                         try{
-                            MapState<Integer, Integer> otherstate = QS.getState2(key);
+                            //MapState<Integer, Integer> otherstate = QS.getState2(key);
                             long currenttime = ctx.timerService().currentProcessingTime();
                             out.collect("In partition "+currentkey+" we retrieve state from partition "
                             + key+" for timer set for: "+timestamp+" at time: "+ currenttime +

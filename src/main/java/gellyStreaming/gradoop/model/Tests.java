@@ -2,6 +2,7 @@ package gellyStreaming.gradoop.model;
 
 
 import akka.stream.impl.fusing.MapAsync;
+import akka.stream.impl.io.InputStreamSinkStage;
 import gellyStreaming.gradoop.partitioner.CustomKeySelector;
 import gellyStreaming.gradoop.partitioner.DBHPartitioner;
 import org.apache.commons.logging.LogConfigurationException;
@@ -65,6 +66,7 @@ import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
 import org.apache.flink.runtime.webmonitor.retriever.GatewayRetriever;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
@@ -89,6 +91,7 @@ import org.apache.flink.types.NullValue;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.ConfigurationException;
 import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.Environment;
 import org.gradoop.common.model.impl.id.GradoopId;
@@ -428,35 +431,96 @@ public class Tests {
     }
 
     public static void queryableStateAndVertexCounting() throws Exception {
-        int numberOfPartitions = 4;
+        int numberOfPartitions = 2;
         Configuration config = new Configuration();
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                "src/main/resources/aves-sparrow-social.edges");
-        SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
-
+                //"src/main/resources/Cit-HepPh.txt");
+                //"src/main/resources/aves-sparrow-social.edges");
+                "src/main/resources/ml-100k/ml-100k-sorted.csv");
+                //"src/main/resources/aves-sparrow-social2.txt");
+        //SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
+        tempEdges.print();
         QueryState QS = new QueryState();
 
         //GraphState gs = tempEdges.buildState(QS,"EL-proc",
         //        org.apache.flink.streaming.api.windowing.time.Time.of(1000, MILLISECONDS),
         //        org.apache.flink.streaming.api.windowing.time.Time.of(1000, MILLISECONDS),
         //        numberOfPartitions);
-        GraphState gs = doubleEdges.buildState(QS, "TTL", 10000L, 10000L, numberOfPartitions);
+        GraphState gs = tempEdges.buildState(QS, "TTL", 1000000000L, 10000L, numberOfPartitions);
         JobClient jobClient = env.executeAsync();
         gs.overWriteQS(jobClient.getJobID());
-        System.out.println(jobClient.getJobExecutionResult(ClassLoader.getPlatformClassLoader()).get().getNetRuntime()
-        +" was the time it took.");
+        // 2636 on par(1)
+        // 2,741, 2634 on par(2)
+        // 2661, 2668 on par(4)
+        // Finds 1283359 instead of 3358499 on Cit-HepPh.
+        //
+        //env.execute();
+    }
+
+    public static void countVertex() throws Exception {
+        int numberOfPartitions = 8;
+        Configuration config = new Configuration();
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        config.set(DeploymentOptions.ATTACHED, false);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setParallelism(numberOfPartitions);
+        env.getConfig().enableSysoutLogging();
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+                "src/main/resources/as20000102.txt");
+                //"src/main/resources/Cit-HepPh.txt");
+                //"src/main/resources/aves-sparrow-social.edges");
+                //"src/main/resources/ml-100k/ml-100k-sorted.csv");
+        //"src/main/resources/aves-sparrow-social2.txt");
+        //SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
+        GraphState gs = tempEdges.buildState(new QueryState(), "vertices", 1000000000L, 10000L, numberOfPartitions);
+        JobClient jobClient = env.executeAsync();
+        gs.overWriteQS(jobClient.getJobID());
+    }
+
+
+
+    public static void countTriangle() throws Exception {
+        int numberOfPartitions = 1;
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setParallelism(numberOfPartitions);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        //SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+        //        "src/main/resources/as-733/all days/as20000102.txt");
+
+        /*
+                        "src/main/resources/as-733/as20000102.txt"); // finds 41872, 35154
+
+                //"src/main/resources/Cit-HepPh.txt");
+                //"src/main/resources/aves-sparrow-social.edges"); //finds 2636
+                //"src/main/resources/ml-100k/ml-100k-sorted.csv");
+        //"src/main/resources/aves-sparrow-social2.txt");
+
+         */
+        //SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
+        SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+                "src/main/resources/aves-sparrow-social.edges");
+        GraphState gs = tempEdges.buildState(new QueryState(), "triangles",numberOfPartitions);
+        JobClient jobClient = env.executeAsync();
+        //JobExecutionResult result = env.execute();
+        gs.overWriteQS(jobClient.getJobID());
+        //gs.overWriteQS(result.getJobID());
     }
 
 
 
     public static void main(String[] args) throws Exception {
-        Runtime rt = Runtime.getRuntime();
-        long usedMB = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024;
-        System.out.println("Used MB before: "+ usedMB);
+        //Runtime rt = Runtime.getRuntime();
+        //long usedMB = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024;
+        //System.out.println("Used MB before: "+ usedMB);
         //testLoadingGraph();
         //testGradoopSnapshotStream();
         //testPartitioner();
@@ -466,11 +530,13 @@ public class Tests {
         //queryableState2();
         //restApi();
         //triangleEstimator();
-        queryableStateAndVertexCounting();
+        //queryableStateAndVertexCounting();
+        //countVertex();
+        countTriangle();
         //Thread.sleep(100000);
-        Runtime rt2 = Runtime.getRuntime();
-        long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;
-        System.out.println("Used MB after: "+ usedMB2);
+        //Runtime rt2 = Runtime.getRuntime();
+        //long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;
+        //System.out.println("Used MB after: "+ usedMB2);
     }
 
     static SimpleTemporalEdgeStream getSimpleTemporalMovieEdgesStream(StreamExecutionEnvironment env, Integer numberOfPartitions, String filepath) throws IOException {
@@ -536,18 +602,19 @@ public class Tests {
             public TemporalEdge map(Tuple2<Edge<Long, String>, Integer> edge) throws Exception {
                 Map<String, Object> properties = new HashMap<>();
                 //Integer rating = Integer.parseInt(edge.f0.f2.split(",")[0]);
-                Long timestamp = Long.parseLong(edge.f0.f2.split(",")[1]);
+                //Long timestamp = Long.parseLong(edge.f0.f2.split(",")[1]);
                 //properties.put("rating", rating);
                 properties.put("partitionID", edge.f1);
                 return new TemporalEdge(
                         GradoopId.get(),
                         "watched",
-                        new GradoopId(0, edge.f0.getSource().intValue(), (short) 0, 0),
-                        new GradoopId(0, edge.f0.getTarget().intValue(), (short) 0, 0),
-                        //new GradoopId(0, edge.f0.getTarget().intValue(), (short) 1, 0),
+                        new GradoopId(edge.f0.getSource().intValue(),0 ,(short) 0, 0),
+                        new GradoopId(edge.f0.getTarget().intValue(), 0,(short) 0, 0),
+                        //new GradoopId(edge.f0.getTarget().intValue(), 0, (short) 1, 0),
                         Properties.createFromMap(properties),
                         graphId,
-                        timestamp, //       (valid) starting time
+                        //timestamp, //       (valid) starting time
+                        0L,
                         Long.MAX_VALUE
                 );
             }
@@ -562,6 +629,16 @@ public class Tests {
         SourceFunction<TemporalEdge> infinite = new SourceFunction<TemporalEdge>() {
             @Override
             public void run(SourceContext<TemporalEdge> sourceContext) throws Exception {
+                /*
+                Map<String, Object> properties = new HashMap<>();
+                properties.put("partitionID", 1);
+                sourceContext.collect(new TemporalEdge(GradoopId.get(),
+                        "watched",
+                        new GradoopId(0, 640, (short)0,0),
+                        new GradoopId(0, 712, (short)0,0),
+                        Properties.createFromMap(properties),
+                        null, null, null));
+                 */
                 while(true) {
                     sourceContext.collect(new TemporalEdge(null, null, null, null,
                             null, null, null, null));
@@ -771,18 +848,27 @@ public class Tests {
                     }
                 });
     }
-    public static  DataStream<Edge<Long, String>> getMovieEdges2(StreamExecutionEnvironment env, String filepath) throws IOException {
-
-        return env.readTextFile(filepath)
+    public static DataStream<Edge<Long, String>> getMovieEdges2(StreamExecutionEnvironment env, String filepath) throws IOException {
+        //env.readTextFile(filepath).print();
+        return env.readTextFile(filepath).filter(new FilterFunction<String>() {
+                    @Override
+                    public boolean filter(String s) throws Exception {
+                        //System.out.println(s);
+                        return !s.startsWith("#");
+                    }
+                })
                 .map(new MapFunction<String, Edge<Long, String>>() {
                     @Override
                     public Edge<Long, String> map(String s) throws Exception {
+                        //System.out.println(s);
                         //String[] fields = s.split(",");
+                        //String[] fields = s.split("\t");
                         String[] fields = s.split("\\s");
                         long src = Long.parseLong(fields[0]);
                         long trg = Long.parseLong(fields[1]);
-                        String value = fields[2] + "," + fields[3];
-                        return new Edge<>(src, trg, value);
+                        //String value = fields[2] + "," + fields[3];
+                        //return new Edge<>(src, trg, value);
+                        return new Edge<>(src, trg, null);
                     }
                 });
 

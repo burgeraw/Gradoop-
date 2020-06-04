@@ -6,19 +6,13 @@
 
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.example</groupId>
-    <artifactId>Gradoop++</artifactId>
+    <artifactId>Gradoop-</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <!-- maven-compiler-plugin -->
     <build>
         <plugins>
-            <plugin>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
-                </configuration>
-            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -26,6 +20,7 @@
                     <source>11</source>
                     <target>11</target>
                 </configuration>
+                <version>3.8.1</version>
             </plugin>
         </plugins>
     </build>
@@ -61,12 +56,12 @@
         <dependency>
             <groupId>org.gradoop</groupId>
             <artifactId>gradoop-flink</artifactId>
-            <version>0.5.1</version>
+            <version>0.5.2</version>
         </dependency>
         <dependency>
             <groupId>org.gradoop</groupId>
             <artifactId>gradoop-temporal</artifactId>
-            <version>0.5.1</version>
+            <version>0.5.2</version>
         </dependency>
         <dependency>
             <groupId>org.apache.flink</groupId>
