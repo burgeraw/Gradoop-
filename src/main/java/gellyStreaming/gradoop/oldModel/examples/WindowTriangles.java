@@ -120,7 +120,7 @@ public class WindowTriangles implements ProgramDescription {
     }
 
     private static boolean fileOutput = false;
-    private static String edgeInputPath = "src/main/resources/ml-100k/u.data";
+    private static String edgeInputPath = "src/main/resources/aves-sparrow-social.edges";
     private static String outputPath = null;
     private static Time windowTime = Time.of(1, TimeUnit.HOURS);
 
@@ -161,7 +161,7 @@ public class WindowTriangles implements ProgramDescription {
                         public Edge<Long, Long> map(String s) {
                             String[] fields = s.split("\\s");
                             long src = Long.parseLong(fields[0]);
-                            long trg = Long.parseLong(fields[1]) + 1000000;
+                            long trg = Long.parseLong(fields[1]) ;
                             long timestamp = Long.parseLong(fields[3]);
                             return new Edge<>(src, trg, timestamp);
                         }

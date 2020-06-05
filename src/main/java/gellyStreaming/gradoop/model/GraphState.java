@@ -67,6 +67,9 @@ public class GraphState implements Serializable {
         switch (strategy) {
             case "EL": input.map(new createEdgeList()).writeAsText("out", FileSystem.WriteMode.OVERWRITE);
             case "EL2" : input.process(new createEdgeList2()).print();
+            case "triangles" : input.process(new CountTrianglesWithinPu())
+                    .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+
                 break;
             default:
                 throw new IllegalStateException("Unexpected value: " + strategy);
@@ -174,13 +177,88 @@ public class GraphState implements Serializable {
         //input.process(new CountTrianglesStream()).print();
 
         switch (strategy) {
-            case "triangles" : input.process(new CountTrianglesStream()) //.print();
-                .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+            case "triangles" : input.process(new CountTrianglesStream()).print();
+                //.writeAsText("out", FileSystem.WriteMode.OVERWRITE);
         }
     }
 
     public void overWriteQS(JobID jobID) throws UnknownHostException {
         this.QS.initialize(jobID);
+    }
+
+    public static class CountTrianglesWithinPu extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+        private MapState<GradoopId, HashSet<GradoopId>> adjacencyList;
+        private ValueState<Integer> triangleCount;
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            MapStateDescriptor<GradoopId, HashSet<GradoopId>> descriptor = new MapStateDescriptor<GradoopId, HashSet<GradoopId>>(
+                    "adjacencyList",
+                    TypeInformation.of(new TypeHint<GradoopId>() {}),
+                    TypeInformation.of(new TypeHint<HashSet<GradoopId>>() {}));
+            //descriptor.setQueryable("adjacencyList");
+            adjacencyList = getRuntimeContext().getMapState(descriptor);
+            ValueStateDescriptor<Integer> descriptor1 = new ValueStateDescriptor<Integer>(
+                    "triangleCount",
+                    Integer.class);
+            triangleCount = getRuntimeContext().getState(descriptor1);
+        }
+
+        @Override
+        public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
+            if (triangleCount.value() == null) {
+                triangleCount.update(0);
+            }
+
+            GradoopId src = edge.getSourceId();
+            GradoopId trg = edge.getTargetId();
+            Boolean processEdge = true;
+            try {
+                if (adjacencyList.get(src).contains(trg)) {
+                    //processEdge = false;
+                }
+                //if (adjacencyList.get(trg).contains(src)) {
+                //    processEdge = false;
+                //}
+            } catch (NullPointerException ignored) {}
+            if(processEdge){
+                    try {
+                        adjacencyList.get(src).add(trg);
+                    } catch (NullPointerException e) {
+                        HashSet<GradoopId> toPut = new HashSet<GradoopId>();
+                        toPut.add(trg);
+                        adjacencyList.put(src, toPut);
+                    }
+
+                    try {
+                        adjacencyList.get(trg).add(src);
+                    } catch (NullPointerException e) {
+                        HashSet<GradoopId> toPut = new HashSet<GradoopId>();
+                        toPut.add(src);
+                        adjacencyList.put(trg, toPut);
+                    }
+
+                    HashSet<GradoopId> neighboursSrc = adjacencyList.get(src);
+                    HashSet<GradoopId> neighboursTrg = adjacencyList.get(trg);
+
+                    AtomicInteger triangles = new AtomicInteger(0);
+                    if (neighboursSrc.size() < neighboursTrg.size()) {
+                        for (GradoopId id : neighboursSrc) {
+                            if (neighboursTrg.contains(id) && id != src && id != trg) {
+                                triangles.getAndIncrement();
+                            }
+                        }
+                    } else {
+                        for (GradoopId id : neighboursTrg) {
+                            if (neighboursSrc.contains(id) && id != src && id != trg) {
+                                triangles.getAndIncrement();
+                            }
+                        }
+                    }
+                    triangleCount.update(triangleCount.value() + triangles.get());
+                    collector.collect("We found " + triangles.get() + " new triangles, making the total " + triangleCount.value());
+            }
+        }
     }
 
     public static class CountTrianglesStream extends KeyedProcessFunction<Integer, TemporalEdge, String> {
@@ -220,6 +298,7 @@ public class GraphState implements Serializable {
                 toPut.add(trg);
                 adjacencyList.put(src, toPut);
             }
+
             try{
                 adjacencyList.get(trg).add(src);
             } catch (NullPointerException e) {
@@ -227,6 +306,8 @@ public class GraphState implements Serializable {
                 toPut.add(src);
                 adjacencyList.put(trg, toPut);
             }
+
+
 
             HashSet<GradoopId> neighboursSrc = adjacencyList.get(src);
             HashSet<GradoopId> neighboursTrg = adjacencyList.get(trg);
