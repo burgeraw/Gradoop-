@@ -438,9 +438,10 @@ public class Tests {
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+                "src/main/resources/GeneratedEdges.csv");
                 //"src/main/resources/Cit-HepPh.txt");
                 //"src/main/resources/aves-sparrow-social.edges");
-                "src/main/resources/ml-100k/ml-100k-sorted.csv");
+                //"src/main/resources/ml-100k/ml-100k-sorted.csv");
                 //"src/main/resources/aves-sparrow-social2.txt");
         //SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
         tempEdges.print();
@@ -507,9 +508,13 @@ public class Tests {
          */
         //SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                "src/main/resources/aves-sparrow-social.edges");
-        GraphState gs = tempEdges.buildState(new QueryState(), "triangles",numberOfPartitions);
+                "src/main/resources/aves-sparrow-social.edges"); //finds 1857
+                //"src/main/resources/GeneratedEdges.csv"); //finds 1100
+        // found 364, 267, 263, 210 =
+        QueryState QS = new QueryState();
+        GraphState gs = tempEdges.buildState(QS, "triangles", numberOfPartitions);
         JobClient jobClient = env.executeAsync();
+
         //JobExecutionResult result = env.execute();
         gs.overWriteQS(jobClient.getJobID());
         //gs.overWriteQS(result.getJobID());
@@ -863,6 +868,7 @@ public class Tests {
                         //System.out.println(s);
                         //String[] fields = s.split(",");
                         //String[] fields = s.split("\t");
+                        //String[] fields = s.split(",");
                         String[] fields = s.split("\\s");
                         long src = Long.parseLong(fields[0]);
                         long trg = Long.parseLong(fields[1]);

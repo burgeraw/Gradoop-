@@ -3,6 +3,7 @@ package gellyStreaming.gradoop.model;
 import akka.dispatch.ExecutorServiceConfigurator;
 import akka.dispatch.ExecutorServiceFactory;
 import akka.dispatch.ExecutorServiceFactoryProvider;
+import com.typesafe.config.ConfigException;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
@@ -177,8 +178,8 @@ public class GraphState implements Serializable {
         //input.process(new CountTrianglesStream()).print();
 
         switch (strategy) {
-            case "triangles" : input.process(new CountTrianglesStream()).print();
-                //.writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+            case "triangles" : input.process(new CountTrianglesStream())//.print();
+                .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
         }
     }
 
@@ -215,12 +216,15 @@ public class GraphState implements Serializable {
             Boolean processEdge = true;
             try {
                 if (adjacencyList.get(src).contains(trg)) {
-                    //processEdge = false;
+                    processEdge = false;
                 }
-                //if (adjacencyList.get(trg).contains(src)) {
-                //    processEdge = false;
-                //}
             } catch (NullPointerException ignored) {}
+            try {
+                if (adjacencyList.get(trg).contains(src)) {
+                    processEdge = false;
+                }
+            }
+            catch (NullPointerException ignored) {}
             if(processEdge){
                     try {
                         adjacencyList.get(src).add(trg);
@@ -291,68 +295,75 @@ public class GraphState implements Serializable {
             GradoopId src = edge.getSourceId();
             GradoopId trg = edge.getTargetId();
 
-            try{
-                adjacencyList.get(src).add(trg);
-            } catch (NullPointerException e) {
-                HashSet<GradoopId> toPut = new HashSet<GradoopId>();
-                toPut.add(trg);
-                adjacencyList.put(src, toPut);
-            }
+            boolean add = true;
+            try {
+            if(adjacencyList.contains(src) && adjacencyList.get(src).contains(trg)) {
+                add = false;
+            }} catch (NullPointerException ignored) {}
 
-            try{
-                adjacencyList.get(trg).add(src);
-            } catch (NullPointerException e) {
-                HashSet<GradoopId> toPut = new HashSet<GradoopId>();
-                toPut.add(src);
-                adjacencyList.put(trg, toPut);
-            }
+            if(add) {
+                try {
+                    adjacencyList.get(src).add(trg);
+                } catch (NullPointerException e) {
+                    HashSet<GradoopId> toPut = new HashSet<GradoopId>();
+                    toPut.add(trg);
+                    adjacencyList.put(src, toPut);
+                }
+
+                try {
+                    adjacencyList.get(trg).add(src);
+                } catch (NullPointerException e) {
+                    HashSet<GradoopId> toPut = new HashSet<GradoopId>();
+                    toPut.add(src);
+                    adjacencyList.put(trg, toPut);
+                }
 
 
-
-            HashSet<GradoopId> neighboursSrc = adjacencyList.get(src);
-            HashSet<GradoopId> neighboursTrg = adjacencyList.get(trg);
-            int currentKey = context.getCurrentKey();
-            for(int key : keys) {
-                if (key != currentKey) {
-                    boolean retry = true;
-                    int numRetries = 0;
-                    while (retry && numRetries < 10) {
-                        try {
+                HashSet<GradoopId> neighboursSrc = adjacencyList.get(src);
+                HashSet<GradoopId> neighboursTrg = adjacencyList.get(trg);
+                int currentKey = context.getCurrentKey();
+                for (int key : keys) {
+                    if (key != currentKey) {
+                        boolean retry = true;
+                        int numRetries = 0;
+                        while (retry && numRetries < 10) {
                             try {
-                                neighboursSrc.addAll(QS.getState2(key).get(src));
-                            } catch (NullPointerException ignored) {
-                            }
-                            try {
-                                neighboursTrg.addAll(QS.getState2(key).get(trg));
-                            } catch (NullPointerException ignored) {
-                            }
-                            retry = false;
-                        } catch (Exception e) {
-                            numRetries++;
-                            if (numRetries == 10) {
-                                System.out.println("We failed to get state after 10 tries for key: " + key + " and srcVertex: " +
-                                        edge.getSourceId() + " and trgVertex: " + edge.getTargetId());
+                                try {
+                                    neighboursSrc.addAll(QS.getState2(key).get(src));
+                                } catch (NullPointerException ignored) {
+                                }
+                                try {
+                                    neighboursTrg.addAll(QS.getState2(key).get(trg));
+                                } catch (NullPointerException ignored) {
+                                }
+                                retry = false;
+                            } catch (Exception e) {
+                                numRetries++;
+                                if (numRetries == 10) {
+                                    System.out.println("We failed to get state after 10 tries for key: " + key + " and srcVertex: " +
+                                            edge.getSourceId() + " and trgVertex: " + edge.getTargetId());
+                                }
                             }
                         }
                     }
                 }
-            }
-            AtomicInteger triangles = new AtomicInteger(0);
-            if(neighboursSrc.size() < neighboursTrg.size()) {
-                for(GradoopId id : neighboursSrc) {
-                    if(neighboursTrg.contains(id) && id != src && id != trg) {
-                        triangles.getAndIncrement();
+                AtomicInteger triangles = new AtomicInteger(0);
+                if (neighboursSrc.size() < neighboursTrg.size()) {
+                    for (GradoopId id : neighboursSrc) {
+                        if (neighboursTrg.contains(id) && id != src && id != trg) {
+                            triangles.getAndIncrement();
+                        }
+                    }
+                } else {
+                    for (GradoopId id : neighboursTrg) {
+                        if (neighboursSrc.contains(id) && id != src && id != trg) {
+                            triangles.getAndIncrement();
+                        }
                     }
                 }
-            } else {
-                for(GradoopId id : neighboursTrg) {
-                    if(neighboursSrc.contains(id) && id != src && id != trg) {
-                        triangles.getAndIncrement();
-                    }
-                }
+                triangleCount.update(triangleCount.value() + triangles.get());
+                collector.collect("We found " + triangles.get() + " new triangles, making the total " + triangleCount.value() + ". Time: " + context.timerService().currentProcessingTime());
             }
-            triangleCount.update(triangleCount.value()+triangles.get());
-            collector.collect("We found "+triangles.get()+" new triangles, making the total "+triangleCount.value());
         }
     }
 

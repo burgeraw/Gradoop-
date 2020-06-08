@@ -49,7 +49,7 @@ public class Tests2 {
     }
 
     public static void testVertexPartitioner() throws Exception {
-        //String filepath = "src/main/resources/aves-sparrow-social.edges";
+        String filepath = "src/main/resources/aves-sparrow-social.edges";
         //516 edges: 4:253, 9:180, 1:224, 2:173 = 830 with trying to place trg&src in same partition
         //516 edges: 4:253, 9:160, 1:160, 2:272 = 845 without
         // Should find 8.2k triangles, found: 534, 407, 674, 313 = 1928
@@ -74,12 +74,12 @@ public class Tests2 {
         // 12 edges, should have 2 triangles, found 2.
         //String filepath = "src/main/resources/as-733/as20000102.txt"; //tab separated 26467 edges
         // 13895 edges w/o duplicates, found 11612 triangles, should be 6584.
-        String filepath = "src/main/resources/GeneratedEdges.csv";
+        //String filepath = "src/main/resources/GeneratedEdges.csv";
         // 2200 edges, correctly finding 1099 triangles.
         // with par(4): 521, 517, 516, 718 = 2272 edges
         // should find 1100 traingles, found 249, 246, 249, 351 = 1095
-        String delimiter = ",";
-        int numberOfPartitions = 4;
+        String delimiter = "\\s";
+        int numberOfPartitions = 1;
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
         DataStream<Tuple2<Edge<Long, String>, Integer>> partitionedStream =
