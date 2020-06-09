@@ -508,7 +508,8 @@ public class Tests {
          */
         //SimpleTemporalEdgeStream doubleEdges = tempEdges.undirected();
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                "src/main/resources/aves-sparrow-social.edges"); //finds 1857
+                "src/main/resources/as-733/as20000102.txt");
+                //"src/main/resources/aves-sparrow-social.edges"); //finds 1857
                 //"src/main/resources/GeneratedEdges.csv"); //finds 1100
         // found 364, 267, 263, 210 =
         QueryState QS = new QueryState();
@@ -518,6 +519,29 @@ public class Tests {
         //JobExecutionResult result = env.execute();
         gs.overWriteQS(jobClient.getJobID());
         //gs.overWriteQS(result.getJobID());
+    }
+
+    public static void countTriangles2() throws IOException, InterruptedException {
+        int numberOfPartitions = 1;
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setParallelism(numberOfPartitions);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+                //"src/main/resources/aves-sparrow-social.edges");
+                "src/main/resources/email-Eu-core.txt");
+                //"src/main/resources/Cit-HepPh.txt");
+                //"src/main/resources/as-733/as20000102.txt");
+        QueryState QS = new QueryState();
+        GraphState gs = tempEdges.buildState(new QueryState(), "triangles2", 20000L, 2000L, numberOfPartitions);
+        try {
+            JobClient jobClient = env.executeAsync();
+            gs.overWriteQS(jobClient.getJobID());
+        } catch (Exception e) {
+            System.out.println(e);
+        }
     }
 
 
@@ -537,7 +561,8 @@ public class Tests {
         //triangleEstimator();
         //queryableStateAndVertexCounting();
         //countVertex();
-        countTriangle();
+        //countTriangle();
+        countTriangles2();
         //Thread.sleep(100000);
         //Runtime rt2 = Runtime.getRuntime();
         //long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;

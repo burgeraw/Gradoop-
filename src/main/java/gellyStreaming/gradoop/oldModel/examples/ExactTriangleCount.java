@@ -161,12 +161,14 @@ public class ExactTriangleCount {
 
     private static boolean fileOutput = false;
     //private static String edgeInputPath = "src/main/resources/as-733/textfile.txt";
-    private static String edgeInputPath = "src/main/resources/Cit-HepPh.txt";
+    //private static String edgeInputPath = "src/main/resources/Cit-HepPh.txt";
     //private static String edgeInputPath = null;
     //private static String edgeInputPath = "src/main/resources/as-733/all days/as20000102.txt";
     //private static String edgeInputPath = "src/main/resources/ml-100k/u.data";
     //private static String edgeInputPath = "src/main/resources/aves-sparrow-social.edges";
+    //private static String edgeInputPath = "src/main/resources/email-Eu-core.txt";
     //private static String edgeInputPath = "src/main/resources/as-733/as20000102.txt";
+    private static String edgeInputPath = "src/main/resources/GeneratedEdges.csv";
     private static String resultPath = null;
 
     private static boolean parseParameters(String[] args) {
@@ -198,7 +200,8 @@ public class ExactTriangleCount {
                     .flatMap(new FlatMapFunction<String, Edge<Integer, NullValue>>() {
                         @Override
                         public void flatMap(String s, Collector<Edge<Integer, NullValue>> out) {
-                            String[] fields = s.split("\\s");
+                            //String[] fields = s.split("\\s");
+                            String[] fields = s.split(",");
                             if (!fields[0].equals("#")) {
                                 int src = Integer.parseInt(fields[0]);
                                 int trg = Integer.parseInt(fields[1]);

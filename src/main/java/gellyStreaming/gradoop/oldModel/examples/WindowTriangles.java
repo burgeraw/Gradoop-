@@ -22,6 +22,8 @@ import org.apache.flink.util.Collector;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Counts exact number of triangles in a graph slice.
@@ -120,7 +122,8 @@ public class WindowTriangles implements ProgramDescription {
     }
 
     private static boolean fileOutput = false;
-    private static String edgeInputPath = "src/main/resources/aves-sparrow-social.edges";
+    //private static String edgeInputPath = "src/main/resources/aves-sparrow-social.edges";
+    private static String edgeInputPath = "src/main/resources/GeneratedEdges.csv";
     private static String outputPath = null;
     private static Time windowTime = Time.of(1, TimeUnit.HOURS);
 
@@ -147,6 +150,7 @@ public class WindowTriangles implements ProgramDescription {
             System.out.println("  See the documentation for the correct format of input files.");
             System.out.println("  Usage: WindowTriangles <input edges path> <output path>"
                     + " <window time (ms)> <parallelism (optional)>");
+            env.setParallelism(1);
         }
         return true;
     }
@@ -154,15 +158,18 @@ public class WindowTriangles implements ProgramDescription {
 
     @SuppressWarnings("serial")
     private static SimpleEdgeStream<Long, NullValue> getGraphStream(StreamExecutionEnvironment env) {
+        AtomicLong counter = new AtomicLong(0);
         if (edgeInputPath!= null) {
             return new SimpleEdgeStream<>(env.readTextFile(edgeInputPath)
                     .map(new MapFunction<String, Edge<Long, Long>>() {
                         @Override
                         public Edge<Long, Long> map(String s) {
-                            String[] fields = s.split("\\s");
+                            //String[] fields = s.split("\\s");
+                            String[] fields = s.split(",");
                             long src = Long.parseLong(fields[0]);
                             long trg = Long.parseLong(fields[1]) ;
-                            long timestamp = Long.parseLong(fields[3]);
+                           // long timestamp = Long.parseLong(fields[3]);
+                            long timestamp = counter.incrementAndGet();
                             return new Edge<>(src, trg, timestamp);
                         }
                     }), new EdgeValueTimestampExtractor(), env).mapEdges(new RemoveEdgeValue());

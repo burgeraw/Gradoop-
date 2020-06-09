@@ -161,6 +161,8 @@ public class GraphState implements Serializable {
             case "vertices" : input.process(new CountingVertices(windowSize, slide))
                     .print();
                     //.writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+            case "triangles2" : input.process(new CountTriangles2(windowSize, slide))
+                    .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
         }
     }
 
@@ -185,6 +187,134 @@ public class GraphState implements Serializable {
 
     public void overWriteQS(JobID jobID) throws UnknownHostException {
         this.QS.initialize(jobID);
+    }
+
+    public static class CountTriangles2 extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+
+        private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
+        private final Long window;
+        private final Long slide;
+        private transient ValueState<Long> lastOutput;
+        private transient ValueState<Integer> triangleCount;
+        private transient ValueState<Integer> edgeCountSinceTimestamp;
+        private transient ValueState<Long> lastTimestamp;
+
+        public CountTriangles2(long window, long slide) {
+            this.slide = slide;
+            this.window = window;
+        }
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
+                    "sortedEdgeList",
+                    TypeInformation.of(new TypeHint<GradoopId>() {
+                    }),
+                    TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
+                    })
+            );
+            ELdescriptor.setQueryable("sortedEdgeList");
+            sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
+            ValueStateDescriptor<Long> descriptor = new ValueStateDescriptor<Long>(
+                    "lastOutputTime", Long.class);
+            lastOutput = getRuntimeContext().getState(descriptor);
+            ValueStateDescriptor<Integer> descriptor1 = new ValueStateDescriptor<Integer>(
+                    "triangleCount", Integer.class);
+            triangleCount = getRuntimeContext().getState(descriptor1);
+            ValueStateDescriptor<Integer> descriptor2 = new ValueStateDescriptor<Integer>(
+                    "edgeCountSinceTimestamp", Integer.class);
+            edgeCountSinceTimestamp = getRuntimeContext().getState(descriptor2);
+            ValueStateDescriptor<Long> descriptor3 = new ValueStateDescriptor<Long>(
+                    "lastTimestamp", Long.class);
+            lastTimestamp = getRuntimeContext().getState(descriptor3);
+        }
+
+        @Override
+        public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
+            while(!QS.isInitilized()) {
+                Thread.sleep(100);
+            }
+            if(triangleCount.value() == null) {
+                triangleCount.update(0);
+            }
+            if(edgeCountSinceTimestamp.value() == null) {
+                edgeCountSinceTimestamp.update(0);
+            }
+            if(lastTimestamp.value() == null) {
+                lastTimestamp.update(context.timerService().currentProcessingTime());
+            }
+            long currentTime = lastTimestamp.value();
+            if(lastOutput.value() == null) {
+                lastOutput.update(currentTime);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide+slide);
+            }
+            while(currentTime>(lastOutput.value()+slide)) {
+                lastOutput.update(lastOutput.value()+slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
+                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide+slide);
+                currentTime = context.timerService().currentProcessingTime();
+                lastTimestamp.update(currentTime);
+                edgeCountSinceTimestamp.update(0);
+            }
+            edgeCountSinceTimestamp.update(edgeCountSinceTimestamp.value()+1);
+            if(edgeCountSinceTimestamp.value() == 50) {
+                edgeCountSinceTimestamp.update(0);
+                currentTime = context.timerService().currentProcessingTime();
+                lastTimestamp.update(currentTime);
+            }
+
+            edge.setValidTo(currentTime+window);
+            GradoopId source = edge.getSourceId();
+            GradoopId target = edge.getTargetId();
+            try {
+                sortedEdgeList.get(source).put(target, edge);
+            } catch (NullPointerException e) {
+                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
+                toPut.put(target, edge);
+                sortedEdgeList.put(source, toPut);
+            }
+            try {
+                sortedEdgeList.get(target).put(source, edge);
+            } catch (NullPointerException e) {
+                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
+                toPut.put(source, edge);
+                sortedEdgeList.put(target, toPut);
+            }
+        }
+
+        @Override
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+            AtomicInteger triangleCounter = new AtomicInteger(0);
+            for(GradoopId srcId : sortedEdgeList.keys()) {
+                GradoopId[] neighbours = sortedEdgeList.get(srcId).keySet().toArray(GradoopId[]::new);
+                for(int i = 0; i < neighbours.length; i++) {
+                    GradoopId neighbour1 = neighbours[i];
+                    if(neighbour1.compareTo(srcId) > 0 && sortedEdgeList.get(srcId).get(neighbour1).getValidTo() > timestamp) {
+                        for(int j = 0; j < neighbours.length; j++) {
+                            GradoopId neighbour2 = neighbours[j];
+                            if(i != j && neighbour2.compareTo(neighbour1) > 0 && sortedEdgeList.get(srcId).get(neighbour2).getValidTo() > timestamp) {
+                                try {
+                                    TemporalEdge edge = sortedEdgeList.get(neighbour1).get(neighbour2);
+                                    if(edge.getValidTo() > timestamp) {
+                                        triangleCounter.getAndIncrement();
+                                    }
+                                } catch (NullPointerException e) {
+                                    try {
+                                        TemporalEdge edge = sortedEdgeList.get(neighbour2).get(neighbour1);
+                                        if (edge.getValidTo() > timestamp) {
+                                            triangleCounter.getAndIncrement();
+                                        }
+                                    } catch (NullPointerException ignored) {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            out.collect("We found "+triangleCounter.get()+" triangles at timestamp: "+timestamp
+            +". This timer took "+(ctx.timerService().currentProcessingTime()-timestamp)+" ms.");
+        }
     }
 
     public static class CountTrianglesWithinPu extends KeyedProcessFunction<Integer, TemporalEdge, String> {
@@ -406,6 +536,7 @@ public class GraphState implements Serializable {
                     "vertexDegree", GradoopId.class, Integer.class);
             descriptor3.setQueryable("vertexDegree");
             vertexDegree = getRuntimeContext().getMapState(descriptor3);
+
         }
 
         @Override

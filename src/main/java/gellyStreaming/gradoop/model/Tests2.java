@@ -13,8 +13,10 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.graph.Edge;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.streaming.api.windowing.time.Time;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.common.model.impl.id.GradoopIdSet;
 import org.gradoop.common.model.impl.properties.Properties;
@@ -25,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 public class Tests2 {
 
@@ -49,7 +52,7 @@ public class Tests2 {
     }
 
     public static void testVertexPartitioner() throws Exception {
-        String filepath = "src/main/resources/aves-sparrow-social.edges";
+        //String filepath = "src/main/resources/aves-sparrow-social.edges";
         //516 edges: 4:253, 9:180, 1:224, 2:173 = 830 with trying to place trg&src in same partition
         //516 edges: 4:253, 9:160, 1:160, 2:272 = 845 without
         // Should find 8.2k triangles, found: 534, 407, 674, 313 = 1928
@@ -72,7 +75,7 @@ public class Tests2 {
         // Shouldnt find any triangles: correct.
         //String filepath = "src/main/resources/aves-sparrow-social2.txt";
         // 12 edges, should have 2 triangles, found 2.
-        //String filepath = "src/main/resources/as-733/as20000102.txt"; //tab separated 26467 edges
+        String filepath = "src/main/resources/as-733/as20000102.txt"; //tab separated 26467 edges
         // 13895 edges w/o duplicates, found 11612 triangles, should be 6584.
         //String filepath = "src/main/resources/GeneratedEdges.csv";
         // 2200 edges, correctly finding 1099 triangles.
@@ -111,9 +114,29 @@ public class Tests2 {
         env.execute();
     }
 
+    public static void WindowedVertexCounter() throws IOException, InterruptedException {
+        int numberOfPartitions = 2;
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.getConfig().enableSysoutLogging();
+        SimpleTemporalEdgeStream tempEdges = getTempEdges(env, numberOfPartitions,
+                "src/main/resources/email-Eu-core.txt", "\\s");
+        GraphState gs = tempEdges.buildState(new QueryState(), "vertices",10000L,
+                10000L,numberOfPartitions);
+        try {
+            JobClient jobClient = env.executeAsync();
+            gs.overWriteQS(jobClient.getJobID());
+        } catch (Exception e) {
+            System.out.println(e);
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         //countTriangles();
-        testVertexPartitioner();
+        //testVertexPartitioner();
+        WindowedVertexCounter();
     }
 
     public static SimpleTemporalEdgeStream getTempEdges(StreamExecutionEnvironment env, Integer numberOfPartitions, String filepath, String delimiter) throws IOException {

@@ -6,6 +6,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -499,6 +500,7 @@ keyed on source or target vertex --> good for adjacency list
         public void processElement(Tuple2<Integer, Integer> integerIntegerTuple2, Context context, Collector<Double> collector) throws Exception {
             TE.processElement(integerIntegerTuple2);
             collector.collect(TE.getGlobalTriangle());
+
         }
     }
 
