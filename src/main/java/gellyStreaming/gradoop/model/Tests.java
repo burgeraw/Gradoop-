@@ -544,6 +544,29 @@ public class Tests {
         }
     }
 
+    public static void builtState() throws IOException, InterruptedException {
+        int numberOfPartitions = 2;
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setParallelism(numberOfPartitions);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+                //"src/main/resources/aves-sparrow-social.edges");
+                //"src/main/resources/email-Eu-core.txt");
+        "src/main/resources/Cit-HepPh.txt");
+        //"src/main/resources/as-733/as20000102.txt");
+        tempEdges = tempEdges.undirected();
+        GraphState gs = tempEdges.buildState(new QueryState(), "decoupled", 30000L, 2000L, numberOfPartitions);
+        try {
+            JobClient jobClient = env.executeAsync();
+            gs.overWriteQS(jobClient.getJobID());
+        } catch (Exception e) {
+            System.out.println(e);
+        }
+    }
+
 
 
     public static void main(String[] args) throws Exception {
@@ -562,7 +585,8 @@ public class Tests {
         //queryableStateAndVertexCounting();
         //countVertex();
         //countTriangle();
-        countTriangles2();
+        //countTriangles2();
+        builtState();
         //Thread.sleep(100000);
         //Runtime rt2 = Runtime.getRuntime();
         //long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;

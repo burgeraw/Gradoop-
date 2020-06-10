@@ -150,6 +150,8 @@ public class GraphState implements Serializable {
         for (int i = 0; i < numPartitions; i++)
             keys[i] = keyGenerator.next(i);
 
+        int batchSize = 1000;
+
 
         switch (strategy) {
             case "EL2" : input.process(new createEdgeList3(windowSize, slide))
@@ -162,6 +164,8 @@ public class GraphState implements Serializable {
                     .print();
                     //.writeAsText("out", FileSystem.WriteMode.OVERWRITE);
             case "triangles2" : input.process(new CountTriangles2(windowSize, slide))
+                    .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
+            case "decoupled" : input.process(new BuildState(windowSize, slide, batchSize))
                     .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
         }
     }
@@ -187,6 +191,130 @@ public class GraphState implements Serializable {
 
     public void overWriteQS(JobID jobID) throws UnknownHostException {
         this.QS.initialize(jobID);
+    }
+
+    public static class BuildState extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+
+        private transient ValueState<Integer> edgeCountSinceTimestamp;
+        private transient ValueState<Long> lastTimestamp;
+        private transient MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> sortedEdgeList;
+        private final Long window;
+        private final Long slide;
+        private final int batchSize;
+
+        public BuildState(long windowsize, long slide, int batchSize) {
+            this.window = windowsize;
+            this.slide = slide;
+            this.batchSize = batchSize;
+        }
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> ELdescriptor = new MapStateDescriptor<>(
+                    "sortedEdgeList",
+                    TypeInformation.of(new TypeHint<Long>() {
+                    }),
+                    TypeInformation.of(new TypeHint<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>() {
+                    })
+            );
+            ELdescriptor.setQueryable("sortedEdgeList");
+            sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
+            ValueStateDescriptor<Integer> descriptor2 = new ValueStateDescriptor<Integer>(
+                    "edgeCountSinceTimestamp", Integer.class);
+            edgeCountSinceTimestamp = getRuntimeContext().getState(descriptor2);
+            ValueStateDescriptor<Long> descriptor3 = new ValueStateDescriptor<Long>(
+                    "lastTimestamp", Long.class);
+            lastTimestamp = getRuntimeContext().getState(descriptor3);
+        }
+
+        @Override
+        public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
+            while(!QS.isInitilized()) {
+                Thread.sleep(100);
+            }
+            if(edgeCountSinceTimestamp.value() == null) {
+                edgeCountSinceTimestamp.update(0);
+            }
+
+            if(lastTimestamp.value() == null) {
+                lastTimestamp.update(context.timerService().currentProcessingTime());
+                context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + window);
+                AtomicInteger counter2 = new AtomicInteger(0);
+                for (Long time : sortedEdgeList.keys()) {
+                    for (GradoopId srcId : sortedEdgeList.get(time).keySet()) {
+                        counter2.getAndAdd(sortedEdgeList.get(time).get(srcId).size());
+                    }
+                }
+                collector.collect("We set a timer for " + (lastTimestamp.value() + window) + ". Current state is size "
+                        + counter2.get());
+            }
+
+            if(edgeCountSinceTimestamp.value() == batchSize) {
+                edgeCountSinceTimestamp.update(0);
+                lastTimestamp.update(context.timerService().currentProcessingTime());
+                context.timerService().registerProcessingTimeTimer(lastTimestamp.value()+window);
+
+                AtomicInteger counter2 = new AtomicInteger(0);
+                for(Long time : sortedEdgeList.keys()) {
+                    for(GradoopId srcId : sortedEdgeList.get(time).keySet()) {
+                        counter2.getAndAdd(sortedEdgeList.get(time).get(srcId).size());
+                    }
+                }
+                collector.collect("We set a timer for "+(lastTimestamp.value()+window)+". Current state is size "
+                + counter2.get());
+            }
+
+            long currentTime = lastTimestamp.value();
+            long validTo = currentTime + window;
+
+            if(edgeCountSinceTimestamp.value() == 0) {
+                sortedEdgeList.put(validTo, new HashMap<>());
+            }
+
+            GradoopId source = edge.getSourceId();
+            GradoopId target = edge.getTargetId();
+            edge.setValidTo(validTo);
+
+            try {
+                sortedEdgeList.get(validTo).get(source).put(target, edge);
+            } catch (NullPointerException e) {
+                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
+                toPut.put(target, edge);
+                sortedEdgeList.get(validTo).put(source, toPut);
+            }
+            // This can be used to add an edge in both directions --> to make is undirected.
+            // Better to do this step before, on SimpleTemporalEdgeStream.
+            /*
+            try {
+                sortedEdgeList.get(validTo).get(target).put(source, edge);
+            } catch (NullPointerException e) {
+                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
+                toPut.put(source, edge);
+                sortedEdgeList.get(validTo).put(target, toPut);
+            }
+
+             */
+
+            edgeCountSinceTimestamp.update(edgeCountSinceTimestamp.value()+1);
+        }
+
+        @Override
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+            HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> toRemove = sortedEdgeList.get(timestamp);
+            AtomicInteger counter = new AtomicInteger(0);
+            for(GradoopId srcId : toRemove.keySet()) {
+                counter.getAndAdd(toRemove.get(srcId).size());
+            }
+            sortedEdgeList.remove(timestamp);
+            AtomicInteger counter2 = new AtomicInteger(0);
+            for(Long time : sortedEdgeList.keys()) {
+                for(GradoopId srcId : sortedEdgeList.get(time).keySet()) {
+                    counter2.getAndAdd(sortedEdgeList.get(time).get(srcId).size());
+                }
+            }
+            out.collect("At "+timestamp+" we removed "+ counter.get() + " elements from state. This "+
+                    "leaves a state of size "+counter2.get());
+        }
     }
 
     public static class CountTriangles2 extends KeyedProcessFunction<Integer, TemporalEdge, String> {
