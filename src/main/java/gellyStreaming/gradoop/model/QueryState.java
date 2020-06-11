@@ -93,6 +93,32 @@ public class QueryState {
         }
     }
 
+    public TemporalEdge getEdge(Integer key, GradoopId srcVertex, GradoopId trgVertex) throws Exception {
+        CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "sortedEdgeList",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptor);
+        AtomicReference<TemporalEdge> result = new AtomicReference<>(null);
+        AtomicReference<Boolean> succesfulRetrieval = new AtomicReference<>(false);
+        try {
+            result.set(resultFuture.get().get(srcVertex).get(trgVertex));
+            succesfulRetrieval.set(true);
+        } catch (NullPointerException e) {
+            succesfulRetrieval.set(true);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        if(succesfulRetrieval.get()) {
+            return result.get();
+        } else {
+            throw new Exception();
+        }
+    }
+
     public MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> getState(Integer key) throws Exception {
         CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
                 client.getKvState(

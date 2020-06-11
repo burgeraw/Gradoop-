@@ -557,8 +557,8 @@ public class Tests {
                 //"src/main/resources/email-Eu-core.txt");
         "src/main/resources/Cit-HepPh.txt");
         //"src/main/resources/as-733/as20000102.txt");
-        tempEdges = tempEdges.undirected();
-        GraphState gs = tempEdges.buildState(new QueryState(), "decoupled", 30000L, 2000L, numberOfPartitions);
+        //tempEdges = tempEdges.undirected();
+        GraphState gs = tempEdges.buildState(new QueryState(), "buildSortedEL", 20000L, 5000L, numberOfPartitions);
         try {
             JobClient jobClient = env.executeAsync();
             gs.overWriteQS(jobClient.getJobID());
@@ -567,6 +567,24 @@ public class Tests {
         }
     }
 
+    public static void testBuildingState() throws IOException, InterruptedException {
+        int numberOfPartitions = 8;
+        Configuration config = new Configuration();
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setParallelism(numberOfPartitions);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+                "src/main/resources/Cit-HepPh.txt");
+        QueryState QS = new QueryState();
+        GraphState GS1 = tempEdges.buildState(QS, "buildAL", 20000L, 5000L, numberOfPartitions);
+        GraphState GS2 = tempEdges.buildState(QS, "buildEL", 20000L, 5000L, numberOfPartitions);
+        GraphState GS3 = tempEdges.buildState(QS, "buildSortedEL", 20000L, 5000L, numberOfPartitions);
+        try {
+            env.execute();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
 
     public static void main(String[] args) throws Exception {
@@ -586,7 +604,8 @@ public class Tests {
         //countVertex();
         //countTriangle();
         //countTriangles2();
-        builtState();
+        //builtState();
+        testBuildingState();
         //Thread.sleep(100000);
         //Runtime rt2 = Runtime.getRuntime();
         //long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;
