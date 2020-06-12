@@ -25,6 +25,7 @@ public class QueryState {
     private QueryableStateClient client;
     private MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
     private MapStateDescriptor<GradoopId, Integer> descriptor2;
+    private MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> descriptorAL;
     private JobID jobID;
     private boolean initilized = false;
 
@@ -60,6 +61,14 @@ public class QueryState {
                         TypeInformation.of(new TypeHint<Integer>() {
                         }).createSerializer(executionConfig)
                 );
+        this.descriptorAL =
+                 new MapStateDescriptor<>(
+                "adjacencyList",
+                TypeInformation.of(new TypeHint<Long>() {
+                }).createSerializer(executionConfig),
+                TypeInformation.of(new TypeHint<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>() {
+                }).createSerializer(executionConfig)
+        );
         System.out.println("jobid: " + jobID.toString());
         System.out.println("tmHostname: " + tmHostname);
     }
@@ -135,6 +144,31 @@ public class QueryState {
             results.set(true);
         }catch (Exception e) {
             System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+        }
+        if(results.get()) {
+            return def.f0;
+        } else {
+            throw new Exception();
+        }
+    }
+
+    public MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> getALState(Integer key) throws Exception {
+        CompletableFuture<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "adjacencyList",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptorAL);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        final Tuple1<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> def = new Tuple1<>();
+        try {
+            def.f0 = resultFuture.get();
+            results.set(true);
+        }catch (Exception e) {
+            throw e;
+            //System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
         }
         if(results.get()) {
             return def.f0;

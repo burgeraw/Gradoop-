@@ -568,19 +568,25 @@ public class Tests {
     }
 
     public static void testBuildingState() throws IOException, InterruptedException {
-        int numberOfPartitions = 8;
+        int numberOfPartitions = 1;
         Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                "src/main/resources/Cit-HepPh.txt");
+                //"src/main/resources/Cit-HepPh.txt");
+                "src/main/resources/email-Eu-core.txt");
+        tempEdges = tempEdges.undirected();
         QueryState QS = new QueryState();
-        GraphState GS1 = tempEdges.buildState(QS, "buildAL", 20000L, 5000L, numberOfPartitions);
-        GraphState GS2 = tempEdges.buildState(QS, "buildEL", 20000L, 5000L, numberOfPartitions);
-        GraphState GS3 = tempEdges.buildState(QS, "buildSortedEL", 20000L, 5000L, numberOfPartitions);
+        GraphState GS1 = tempEdges.buildState(QS, "buildAL", 100000L, 10000L, numberOfPartitions);
+        //GraphState GS2 = tempEdges.buildState(QS, "buildEL", 5000L, 1000L, numberOfPartitions);
+        //GraphState GS3 = tempEdges.buildState(QS, "buildSortedEL", 5000L, 1000L, numberOfPartitions);
         try {
-            env.execute();
+            JobClient jobClient = env.executeAsync();
+            GS1.overWriteQS(jobClient.getJobID());
+            //GS1.countTriangles().print();
         } catch (Exception e) {
             e.printStackTrace();
         }

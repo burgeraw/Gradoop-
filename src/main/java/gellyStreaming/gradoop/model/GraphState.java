@@ -1,10 +1,5 @@
 package gellyStreaming.gradoop.model;
 
-import akka.dispatch.ExecutorServiceConfigurator;
-import akka.dispatch.ExecutorServiceFactory;
-import akka.dispatch.ExecutorServiceFactoryProvider;
-import com.typesafe.config.ConfigException;
-import org.apache.commons.collections.list.SynchronizedList;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
@@ -12,55 +7,42 @@ import org.apache.flink.api.common.state.*;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.graph.library.clustering.directed.TriangleListing;
-import org.apache.flink.hadoop.shaded.org.apache.http.HttpResponse;
-import org.apache.flink.hadoop.shaded.org.apache.http.client.HttpClient;
-import org.apache.flink.hadoop.shaded.org.apache.http.client.methods.HttpGet;
-import org.apache.flink.hadoop.shaded.org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.flink.hadoop.shaded.org.apache.http.impl.client.HttpClients;
-import org.apache.flink.runtime.dispatcher.SingleJobJobGraphStore;
-import org.apache.flink.runtime.query.UnknownKvStateLocation;
-import org.apache.flink.runtime.rest.RestServerEndpointConfiguration;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
-import org.apache.flink.runtime.state.Keyed;
-import org.apache.flink.runtime.webmonitor.WebMonitorEndpoint;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.ObjectIdGenerators;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.functions.windowing.ProcessWindowFunction;
-import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.windows.Window;
 import org.apache.flink.util.Collector;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
-import scala.Int;
 
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorCompletionService;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 public class GraphState implements Serializable {
 
     private final KeyedStream<TemporalEdge, Integer> input;
-    private static int[] keys;
+    private static Integer[] keys;
     private static QueryState QS;
+    private DataStream<Tuple3<Integer, Integer[], Long>> output;
 
 
     public GraphState(KeyedStream<TemporalEdge, Integer> input, String strategy) {
@@ -110,7 +92,7 @@ public class GraphState implements Serializable {
 
         KeyGen keyGenerator = new KeyGen(numPartitions,
                 KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
-        keys = new int[numPartitions];
+        keys = new Integer[numPartitions];
         for (int i = 0; i < numPartitions; i++)
             keys[i] = keyGenerator.next(i);
 
@@ -146,12 +128,11 @@ public class GraphState implements Serializable {
         this.QS = QS;
         KeyGen keyGenerator = new KeyGen(numPartitions,
                 KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
-        keys = new int[numPartitions];
+        keys = new Integer[numPartitions];
         for (int i = 0; i < numPartitions; i++)
             keys[i] = keyGenerator.next(i);
 
-        int batchSize = 1000;
-
+        int batchSize = 100000;
 
         switch (strategy) {
             case "EL2" : input.process(new createEdgeList3(windowSize, slide))
@@ -170,8 +151,11 @@ public class GraphState implements Serializable {
             case "triangles2" : input.process(new CountTriangles2(windowSize, slide))
                     .writeAsText("out", FileSystem.WriteMode.OVERWRITE);
                 break;
-            case "buildAL" : input.process(new BuildState1(windowSize, slide, batchSize))
-                    .writeAsText("out1", FileSystem.WriteMode.OVERWRITE);
+            case "buildAL" : input.process(new BuildState1(windowSize, slide, batchSize)).keyBy(
+                    (KeySelector<Tuple3<Integer, Integer[], Long>, Integer>) integerLongTuple3 -> integerLongTuple3.f0)
+                    .process(new TriangleCounter11()).print();
+
+                    //.writeAsText("out1", FileSystem.WriteMode.OVERWRITE);
                 break;
             case "buildEL" : input.process(new BuildState2(windowSize, slide, batchSize))
                     .writeAsText("out2", FileSystem.WriteMode.OVERWRITE);
@@ -190,7 +174,7 @@ public class GraphState implements Serializable {
         this.QS = QS;
         KeyGen keyGenerator = new KeyGen(numPartitions,
                 KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
-        keys = new int[numPartitions];
+        keys = new Integer[numPartitions];
         for (int i = 0; i < numPartitions; i++)
             keys[i] = keyGenerator.next(i);
         //input.process(new CountTrianglesStream()).print();
@@ -203,6 +187,111 @@ public class GraphState implements Serializable {
 
     public void overWriteQS(JobID jobID) throws UnknownHostException {
         this.QS.initialize(jobID);
+    }
+
+    public DataStream<Tuple3<Integer, Integer[], Long>> getOutput() {
+        return output;
+    }
+
+    public DataStream<Integer> countTriangles() {
+        return output.keyBy(new KeySelector<Tuple3<Integer, Integer[], Long>, Integer>() {
+            @Override
+            public Integer getKey(Tuple3<Integer, Integer[], Long> integerLongTuple3) throws Exception {
+                return integerLongTuple3.f0;
+            }
+        }).process(new TriangleCounter11());
+
+    }
+
+    //TriangleCounter
+    public static class TriangleCounter11 extends KeyedProcessFunction<Integer, Tuple3<Integer, Integer[], Long>, Integer> {
+
+        @Override
+        public void processElement(Tuple3<Integer, Integer[], Long> input, Context context, Collector<Integer> collector) throws Exception {
+            System.out.println("The input triangle counter received is: "+input.toString());
+            if (!QS.isInitilized()) {
+                throw new Exception("We don't have Queryable State initialized.");
+            }
+            if (input.f0 != null) {
+                long maxValidTo = input.f2;
+                HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
+                HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> combinedRemoteALs = new HashMap<>();
+                int tries = 0;
+                int maxTries = 10;
+                while (tries < maxTries) {
+                    try {
+                        MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> tempState =
+                                QS.getALState(input.f0);
+                        for (long timestamp : tempState.keys()) {
+                            if (timestamp < maxValidTo) {
+                                localAdjacencyList.putAll(tempState.get(timestamp));
+                            }
+                        }
+                        tries = maxTries;
+                    } catch (Exception e) {
+                        tries++;
+                        if (tries == maxTries) {
+                            throw new Exception("We tried to get state " + maxTries + " times, but failed. ");
+                        }
+                    }
+                }
+                for (int key : input.f1) {
+                    tries = 0;
+                    while (tries < maxTries && key != input.f0) {
+                        try {
+                            MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> tempState =
+                                    QS.getALState(key);
+                            for (Long timestamp : tempState.keys()) {
+                                if (timestamp < maxValidTo) {
+                                    combinedRemoteALs.putAll(tempState.get(timestamp));
+                                }
+                            }
+                            tries = maxTries;
+                        } catch (Exception e) {
+                            tries++;
+                            if (tries >= maxTries) {
+                                throw new Exception("We tried to get state " + maxTries + " times, but failed. ");
+                            }
+                        }
+                    }
+                }
+                System.out.println("We got all states & now start counting triangles.");
+                System.out.println("Size local state: "+localAdjacencyList.values().size());
+                System.out.println("Size remote states combined: "+combinedRemoteALs.values().size());
+                AtomicInteger triangleCounter = new AtomicInteger(0);
+                for (GradoopId srcId : localAdjacencyList.keySet()) {
+                    GradoopId[] neighbours = localAdjacencyList.get(srcId).keySet().toArray(GradoopId[]::new);
+                    for (int i = 0; i < neighbours.length; i++) {
+                        GradoopId neighbour1 = neighbours[i];
+                        if (neighbour1.compareTo(srcId) > 0) {
+                            for (int j = 0; j < neighbours.length; j++) {
+                                GradoopId neighbour2 = neighbours[j];
+                                if (i != j && neighbour2.compareTo(neighbour1) > 0) {
+                                    boolean triangle = false;
+                                    if (localAdjacencyList.containsKey(neighbour1)) {
+                                        triangle = localAdjacencyList.get(neighbour1).containsKey(neighbour2);
+                                    }
+                                    if (!triangle && localAdjacencyList.containsKey(neighbour2)) {
+                                        triangle = localAdjacencyList.get(neighbour2).containsKey(neighbour1);
+                                    }
+                                    if (!triangle && combinedRemoteALs.containsKey(neighbour1)) {
+                                        triangle = combinedRemoteALs.get(neighbour1).containsKey(neighbour2);
+                                    }
+                                    if (!triangle && combinedRemoteALs.containsKey(neighbour2)) {
+                                        triangle = combinedRemoteALs.get(neighbour2).containsKey(neighbour1);
+                                    }
+                                    if (triangle) {
+                                        triangleCounter.getAndIncrement();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                System.out.println("We found "+triangleCounter.get()+" triangles.");
+                collector.collect(triangleCounter.get());
+            }
+        }
     }
 
     // Sorted EL
@@ -466,7 +555,7 @@ public class GraphState implements Serializable {
     }
 
     // Adjacency List
-    public static class BuildState1 extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+    public static class BuildState1 extends KeyedProcessFunction<Integer, TemporalEdge, Tuple3<Integer, Integer[], Long>> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
@@ -474,6 +563,7 @@ public class GraphState implements Serializable {
         private final Long window;
         private final Long slide;
         private final int batchSize;
+        private transient ValueState<Long> nextOutputTimestamp;
 
         public BuildState1(long windowsize, long slide, int batchSize) {
             this.window = windowsize;
@@ -498,15 +588,24 @@ public class GraphState implements Serializable {
             ValueStateDescriptor<Long> descriptor3 = new ValueStateDescriptor<Long>(
                     "lastTimestamp", Long.class);
             lastTimestamp = getRuntimeContext().getState(descriptor3);
+            ValueStateDescriptor<Long> descriptor4 = new ValueStateDescriptor<Long>(
+                    "nextOutputTimestamp", Long.class);
+            nextOutputTimestamp = getRuntimeContext().getState(descriptor4);
         }
 
         @Override
-        public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
+        public void processElement(TemporalEdge edge, Context context, Collector<Tuple3<Integer, Integer[], Long>> collector) throws Exception {
             //while(!QS.isInitilized()) {
             //    Thread.sleep(100);
             //}
             if(edgeCountSinceTimestamp.value() == null) {
                 edgeCountSinceTimestamp.update(0);
+            }
+
+            if(nextOutputTimestamp.value() == null) {
+                long nextOutput = context.timerService().currentProcessingTime() + slide;
+                nextOutputTimestamp.update(nextOutput);
+                context.timerService().registerProcessingTimeTimer(nextOutput);
             }
 
             if(lastTimestamp.value() == null) {
@@ -521,9 +620,9 @@ public class GraphState implements Serializable {
                 }
 
                  */
-                collector.collect("State 1: We started processing at "+lastTimestamp.value());
-                collector.collect(""+(lastTimestamp.value() + window)
-                );
+                //collector.collect("State 1: We started processing at "+lastTimestamp.value());
+                //collector.collect(""+(lastTimestamp.value() + window)
+                //);
                   //      + ". Current state is size "
                     //    + counter2.get());
             }
@@ -541,8 +640,8 @@ public class GraphState implements Serializable {
                 }
 
  */
-                collector.collect(""+(lastTimestamp.value()+window)
-                );
+                //collector.collect(""+(lastTimestamp.value()+window)
+                //);
                  //       +". Current state is size "
                 //+ counter2.get());
             }
@@ -582,7 +681,7 @@ public class GraphState implements Serializable {
         }
 
         @Override
-        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple3<Integer, Integer[], Long>> out) throws Exception {
             /*
             HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> toRemove = adjacencyList.get(timestamp);
             AtomicInteger counter = new AtomicInteger(0);
@@ -598,12 +697,26 @@ public class GraphState implements Serializable {
             }
 
              */
-            adjacencyList.remove(timestamp);
+            if(adjacencyList.contains(timestamp)) {
+                adjacencyList.remove(timestamp);
+                //out.collect("" + (ctx.timerService().currentProcessingTime() - timestamp));
+            }
 
-            out.collect(""+(ctx.timerService().currentProcessingTime()-timestamp)
-            );
-              //      +"This "+
-                //    "leaves a state of size "+counter2.get());
+            if(timestamp == nextOutputTimestamp.value()) {
+                //out.collect("Now we do the algorithm here at: "+timestamp);
+                System.out.println("We are now triggering output");
+                // Think about if we want this here, or just keep outputting results, even if state is empty.
+                // Now it starts again if elements arrive again, but not in the same sliding rythm.
+                nextOutputTimestamp.update(timestamp + slide);
+                ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
+                if(!adjacencyList.isEmpty()) {
+
+                    out.collect(Tuple3.of(ctx.getCurrentKey(), keys, timestamp+window));
+                } else {
+                    //nextOutputTimestamp.update(null);
+                    out.collect(Tuple3.of(null, keys, timestamp+window));
+                }
+            }
         }
     }
 
