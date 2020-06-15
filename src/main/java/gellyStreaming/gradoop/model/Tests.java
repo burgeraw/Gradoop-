@@ -531,11 +531,11 @@ public class Tests {
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
                 //"src/main/resources/aves-sparrow-social.edges");
-                "src/main/resources/email-Eu-core.txt");
-                //"src/main/resources/Cit-HepPh.txt");
+                //"src/main/resources/email-Eu-core.txt");
+                "src/main/resources/Cit-HepPh.txt");
                 //"src/main/resources/as-733/as20000102.txt");
         QueryState QS = new QueryState();
-        GraphState gs = tempEdges.buildState(new QueryState(), "triangles2", 20000L, 2000L, numberOfPartitions);
+        GraphState gs = tempEdges.buildState(new QueryState(), "triangles2", 200000L, 10000L, numberOfPartitions);
         try {
             JobClient jobClient = env.executeAsync();
             gs.overWriteQS(jobClient.getJobID());
@@ -576,11 +576,11 @@ public class Tests {
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                //"src/main/resources/Cit-HepPh.txt");
-                "src/main/resources/email-Eu-core.txt");
+                "src/main/resources/Cit-HepPh.txt");
+                //"src/main/resources/email-Eu-core.txt");
         tempEdges = tempEdges.undirected();
         QueryState QS = new QueryState();
-        GraphState GS1 = tempEdges.buildState(QS, "buildAL", 100000L, 10000L, numberOfPartitions);
+        GraphState GS1 = tempEdges.buildState(QS, "buildAL2", 100000L, 20000L, numberOfPartitions);
         //GraphState GS2 = tempEdges.buildState(QS, "buildEL", 5000L, 1000L, numberOfPartitions);
         //GraphState GS3 = tempEdges.buildState(QS, "buildSortedEL", 5000L, 1000L, numberOfPartitions);
         try {
