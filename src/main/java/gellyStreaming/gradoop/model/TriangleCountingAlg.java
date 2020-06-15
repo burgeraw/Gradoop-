@@ -10,7 +10,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class TriangleCountingAlg implements Algorithm<Integer>{
+public class TriangleCountingAlg implements Algorithm<Integer, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>>{
     @Override
     public Integer doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState,
                                QueryState QS, Integer localKey, Integer[] allKeys) throws InstantiationException {

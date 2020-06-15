@@ -133,7 +133,7 @@ public class GraphState implements Serializable {
         for (int i = 0; i < numPartitions; i++)
             keys[i] = keyGenerator.next(i);
 
-        int batchSize = 100000;
+        int batchSize = 10000;
 
         switch (strategy) {
             case "EL2" : input.process(new createEdgeList3(windowSize, slide))
@@ -873,6 +873,10 @@ public class GraphState implements Serializable {
             }
 
              */
+            if(lastTimestamp.value()<timestamp) {
+                lastTimestamp.update(timestamp);
+
+            }
             if(adjacencyList.contains(timestamp)) {
                 adjacencyList.remove(timestamp);
                 //out.collect("" + (ctx.timerService().currentProcessingTime() - timestamp));
@@ -885,17 +889,17 @@ public class GraphState implements Serializable {
                 // Now it starts again if elements arrive again, but not in the same sliding rythm.
                 nextOutputTimestamp.update(timestamp + slide);
                 ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                TriangleCountingAlg triangle = new TriangleCountingAlg();
+                //TriangleCountingAlg triangle = new TriangleCountingAlg();
+                TriangleCountingAlg2 triangle = new TriangleCountingAlg2();
                 if(!adjacencyList.isEmpty()) {
                     out.collect(triangle.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys));
-                    System.out.println("This took "+(ctx.timerService().currentProcessingTime()-timestamp)+" ms");
                     //out.collect(Tuple3.of(ctx.getCurrentKey(), keys, timestamp+window));
                 } else {
                     out.collect(triangle.doAlgorithm(adjacencyList, QS, null, keys));
-                    System.out.println("This took "+(ctx.timerService().currentProcessingTime()-timestamp)+" ms");
                     //nextOutputTimestamp.update(null);
                     // //out.collect(Tuple3.of(null, keys, timestamp+window));
                 }
+                System.out.println("This took "+(ctx.timerService().currentProcessingTime()-timestamp)+" ms");
             }
         }
     }

@@ -580,7 +580,7 @@ public class Tests {
                 //"src/main/resources/email-Eu-core.txt");
         tempEdges = tempEdges.undirected();
         QueryState QS = new QueryState();
-        GraphState GS1 = tempEdges.buildState(QS, "buildAL2", 100000L, 20000L, numberOfPartitions);
+        GraphState GS1 = tempEdges.buildState(QS, "buildAL2", 50000L, 15000L, numberOfPartitions);
         //GraphState GS2 = tempEdges.buildState(QS, "buildEL", 5000L, 1000L, numberOfPartitions);
         //GraphState GS3 = tempEdges.buildState(QS, "buildSortedEL", 5000L, 1000L, numberOfPartitions);
         try {
