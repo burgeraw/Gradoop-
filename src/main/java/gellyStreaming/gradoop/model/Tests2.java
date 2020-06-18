@@ -42,10 +42,10 @@ public class Tests2 {
                 "src/main/resources/email-Eu-core.txt", "\\s"); //found 218385, should be 105461
         // With par(2), found
                 //"src/main/resources/Cit-HepPh.txt", "\\s"); //finding 1282207 should be 1276868
-        GraphState gs = tempEdges.buildState(new QueryState(), "triangles",numberOfPartitions);
+   //     GraphState gs = tempEdges.buildState(new QueryState(), "triangles",numberOfPartitions);
         JobClient jobClient = env.executeAsync();
         //JobExecutionResult result = env.execute();
-        gs.overWriteQS(jobClient.getJobID());
+    //    gs.overWriteQS(jobClient.getJobID());
         Logger LOG = LoggerFactory.getLogger(GraphState.class);
         LOG.error("log");
 
@@ -110,7 +110,7 @@ public class Tests2 {
                     }
                 })
                 ,env, graphId);
-        GraphState gs = edges.buildState("triangles");
+     //   GraphState gs = edges.buildState("triangles");
         env.execute();
     }
 
@@ -123,11 +123,11 @@ public class Tests2 {
         env.getConfig().enableSysoutLogging();
         SimpleTemporalEdgeStream tempEdges = getTempEdges(env, numberOfPartitions,
                 "src/main/resources/email-Eu-core.txt", "\\s");
-        GraphState gs = tempEdges.buildState(new QueryState(), "vertices",10000L,
-                10000L,numberOfPartitions);
+   //     GraphState gs = tempEdges.buildState(new QueryState(), "vertices",10000L,
+     //           10000L,numberOfPartitions);
         try {
             JobClient jobClient = env.executeAsync();
-            gs.overWriteQS(jobClient.getJobID());
+      //      gs.overWriteQS(jobClient.getJobID());
         } catch (Exception e) {
             System.out.println(e);
         }

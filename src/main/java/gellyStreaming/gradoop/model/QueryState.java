@@ -177,6 +177,111 @@ public class QueryState {
         }
     }
 
+    public HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> getALVerticesFromTo(
+            Integer key, GradoopId[] vertexIds, long From, long To) throws Exception {
+        CompletableFuture<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "adjacencyList",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptorAL);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        final Tuple1<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> def = new Tuple1<>();
+        final Tuple1<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> toReturn = Tuple1.of(new HashMap<>());
+        try {
+            def.f0 = resultFuture.get();
+            for(long timestamp: def.f0.keys()) {
+                if(timestamp <= To && timestamp >= From) {
+                    for (GradoopId id : vertexIds) {
+                        if (def.f0.get(timestamp).containsKey(id)) {
+                            if (!toReturn.f0.containsKey(id)) {
+                                toReturn.f0.put(id, new HashMap<>());
+                            }
+                            toReturn.f0.get(id).putAll(def.f0.get(timestamp).get(id));
+                        }
+                    }
+                }
+            }
+            results.set(true);
+        }catch (Exception e) {
+            throw e;
+            //System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+        }
+        if(results.get()) {
+            return toReturn.f0;
+        } else {
+            throw new Exception();
+        }
+    }
+
+    public Boolean ALcontainsEdgeFromTo(
+            Integer key, GradoopId src, GradoopId trg, long From, long To) throws Exception {
+        CompletableFuture<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "adjacencyList",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptorAL);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        final Tuple1<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> def = new Tuple1<>();
+        AtomicReference<Boolean> contains = new AtomicReference<>(null);
+        try {
+            def.f0 = resultFuture.get();
+            for(long timestamp: def.f0.keys()) {
+                contains.set(timestamp <= To && timestamp >= From && (
+                        (def.f0.get(timestamp).containsKey(src) && def.f0.get(timestamp).get(src).containsKey(trg))
+                                || (def.f0.get(timestamp).containsKey(trg) && def.f0.get(timestamp).get(trg).containsKey(src))));
+            }
+            results.set(true);
+        }catch (Exception e) {
+            throw e;
+            //System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+        }
+        if(results.get()) {
+            return contains.get();
+        } else {
+            throw new Exception();
+        }
+    }
+
+    public HashSet<GradoopId> getALVertexListFromTo(
+            Integer key, long From, long To) throws Exception {
+        CompletableFuture<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "adjacencyList",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptorAL);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        final Tuple1<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> def = new Tuple1<>();
+        final Tuple1<HashSet<GradoopId>> vertices = Tuple1.of(new HashSet<>());
+        try {
+            def.f0 = resultFuture.get();
+            for(long timestamp: def.f0.keys()) {
+                if(timestamp <= To && timestamp >= From) {
+                    vertices.f0.addAll(def.f0.get(timestamp).keySet());
+                }
+            }
+            results.set(true);
+        }catch (Exception e) {
+            throw e;
+            //System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+        }
+        if(results.get()) {
+            return vertices.f0;
+        } else {
+            throw new Exception();
+        }
+    }
+
+
+
     public Boolean edgeExists(Integer key, GradoopId srcVertex, GradoopId trgVertex) throws Exception {
         CompletableFuture<MapState<GradoopId, HashMap<GradoopId, TemporalEdge>>> resultFuture =
                 client.getKvState(

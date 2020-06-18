@@ -8,7 +8,7 @@ import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 import java.util.HashMap;
 
 public interface Algorithm<T, S> {
-    T doAlgorithm(S localState, QueryState QS, Integer localKey, Integer[] allKeys) throws Exception;
+    T doAlgorithm(S localState, QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws Exception;
 }
 
 

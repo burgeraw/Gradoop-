@@ -522,66 +522,24 @@ keyed on source or target vertex --> good for adjacency list
     }
 
 
-    public GraphState buildState(String strategy) {
-        return new GraphState(
-                this.edges.keyBy(new getPartitionId()),
-                strategy);
-    }
-
-//USING
-    public GraphState buildState(QueryState QS,
-                                 String strategy,
-                                 org.apache.flink.streaming.api.windowing.time.Time windowsize,
-                                 org.apache.flink.streaming.api.windowing.time.Time slide,
-                                Integer numPartitions) throws InterruptedException, IOException {
-        return new GraphState(QS,
-                this.edges.keyBy(new getPartitionId()),
-                strategy, windowsize, slide, numPartitions);
-    }
-
-/*
-//Currently using:
-    public GraphState buildState(StreamGraph sg, StreamExecutionEnvironment env, String strategy,
-                                 org.apache.flink.streaming.api.windowing.time.Time windowsize,
-                                 org.apache.flink.streaming.api.windowing.time.Time slide,
-                                 Integer numPartitions) throws UnknownHostException, InterruptedException {
-        return new GraphState(sg,
-                env,
-                this.edges.keyBy(new getPartitionId()),
-                strategy,
-                windowsize,
-                slide,
-                numPartitions);
-    }
- */
-
     public GraphState buildState(QueryState QS,
                                  String strategy,
                                  Long windowSize,
                                  Long slide,
-                                 Integer numPartitions) throws InterruptedException {
+                                 Integer numPartitions,
+                                 Boolean lazyPurging,
+                                 int batchSize,
+                                 Algorithm algorithm)throws InterruptedException {
         return new GraphState(QS,
                 this.edges.keyBy(new getPartitionId()),
                 strategy,
                 windowSize,
                 slide,
-                numPartitions);
+                numPartitions,
+                lazyPurging,
+                batchSize,
+                algorithm);
     }
 
-    public GraphState buildState(QueryState QS,
-                                 String strategy,
-                                 Integer numPartitions) throws InterruptedException {
-        return new GraphState(QS,
-                this.edges.keyBy(new getPartitionId()),
-                strategy,
-                numPartitions);
-    }
-
-
-    public GraphState buildState(String strategy, Long windowsize, Long slide)  {
-        return new GraphState(
-                this.edges.keyBy(new getPartitionId()),
-                strategy, windowsize, slide);
-    }
 
 }
