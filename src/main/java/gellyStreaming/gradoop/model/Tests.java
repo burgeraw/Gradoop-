@@ -5,6 +5,8 @@ import gellyStreaming.gradoop.algorithms.TriangleCountingAlg1;
 import gellyStreaming.gradoop.algorithms.TriangleCountingAlg3;
 import gellyStreaming.gradoop.partitioner.CustomKeySelector;
 import gellyStreaming.gradoop.partitioner.DBHPartitioner;
+import gellyStreaming.gradoop.partitioner.FennelPartitioner;
+import gellyStreaming.gradoop.partitioner.HelpState;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -26,8 +28,10 @@ import org.gradoop.common.model.impl.id.GradoopIdSet;
 import org.gradoop.common.model.impl.properties.Properties;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
-import java.io.IOException;
+import java.io.*;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 
 public class Tests {
@@ -147,7 +151,7 @@ public class Tests {
 
 
     public static void testBuildingState() throws IOException, InterruptedException {
-        int numberOfPartitions = 8;
+        int numberOfPartitions = 2;
         Configuration config = new Configuration();
         config.set(DeploymentOptions.ATTACHED, false);
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
@@ -155,12 +159,12 @@ public class Tests {
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                //"src/main/resources/Cit-HepPh.txt");
-                "src/main/resources/email-Eu-core.txt");
+                "src/main/resources/Cit-HepPh.txt");
+                //"src/main/resources/email-Eu-core.txt");
         tempEdges = tempEdges.undirected();
         QueryState QS = new QueryState();
         GraphState GS1 = tempEdges.buildState(QS, "AL", 500000L, 60000L,
-                numberOfPartitions, false, 100000, new TriangleCountingAlg1());
+                numberOfPartitions, false, 100000, new TriangleCountingAlg3());
         try {
             GS1.getAlgorithmOutput().print();
         } catch (Exception e) {
@@ -177,6 +181,48 @@ public class Tests {
         }
     }
 
+    public static void makeAL() throws Exception {
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        //env.setParallelism(1);
+        //DataStream<Edge<Long, String>> edgeDataStream = getMovieEdges2(env, "src/main/resources/email-Eu-core.txt");
+        //FennelPartitioner fennelPartitioner = new FennelPartitioner();
+        //HashMap<Long, HashSet<Long>> state = fennelPartitioner.AL4(edgeDataStream);
+        //System.out.println(state.toString());
+        HelpState state = new HelpState();
+        FileReader fr = new FileReader("src/main/resources/email-Eu-core.txt");
+        BufferedReader br = new BufferedReader(fr);
+        String line;
+        int counter = 0;
+        while((line = br.readLine())!= null) {
+            String[] fields = line.split("\\s");
+            long src = Long.parseLong(fields[0]);
+            long trg = Long.parseLong(fields[1]);
+            state.addEdge(src, trg);
+            System.out.println("We read "+counter++ +" edges");
+        }
+        br.close();
+        fr.close();
+
+        HashMap<Long, HashSet<Long>> stateFinal = state.returnState();
+
+        File output = new File("resources/AL/email-Eu-core");
+        // total edges = 25570
+        // total vertices = 10005
+        try (BufferedWriter bf = new BufferedWriter(new FileWriter(output))) {
+            for (long src : stateFinal.keySet()) {
+                bf.write( src + ":" + Arrays.toString(stateFinal.get(src).toArray()) );
+                bf.newLine();
+            }
+            bf.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void testVertexPartitioner() {
+
+    }
+
 
 
     public static void main(String[] args) throws Exception {
@@ -187,7 +233,9 @@ public class Tests {
         //countVertex();
         //countTriangles2();
         //builtState();
-        testBuildingState();
+        //testBuildingState();
+        makeAL();
+        //testVertexPartitioner();
         //Thread.sleep(100000);
         //Runtime rt2 = Runtime.getRuntime();
         //long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;
