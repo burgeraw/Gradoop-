@@ -14,6 +14,7 @@ public class DBHPartitioner<K, V> implements Partitioner<K> {
     private static final int MAX_SHRINK = 100;
     private final double seed;
     private final int shrink;
+    private int[] keys;
 
     public DBHPartitioner(CustomKeySelector<K, V> keySelector, int k)
     {
@@ -23,16 +24,16 @@ public class DBHPartitioner<K, V> implements Partitioner<K> {
         seed = Math.random();
         Random r = new Random();
         shrink = r.nextInt(MAX_SHRINK);
-
+        KeyGen keyGenerator = new KeyGen(k,
+                KeyGroupRangeAssignment.computeDefaultMaxParallelism(k));
+        keys = new int[k];
+        for (int i = 0; i < k ; i++)
+            keys[i] = keyGenerator.next(i);
     }
 
     @Override
     public int partition(K key, int numPartitions) {
-        KeyGen keyGenerator = new KeyGen(numPartitions,
-                KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
-        int[] keys = new int[numPartitions];
-        for (int i = 0; i < numPartitions ; i++)
-            keys[i] = keyGenerator.next(i);
+
         long target = 0L;
         try {
             Object target2 = keySelector.getValue(key);

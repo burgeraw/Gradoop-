@@ -17,10 +17,10 @@ public class HelpState implements Serializable {
             state.put(src, new HashSet<>());
         }
         state.get(src).add(trg);
-        if(!state.containsKey(trg)) {
-            state.put(trg, new HashSet<>());
-        }
-        state.get(trg).add(src);
+        //if(!state.containsKey(trg)) {
+        //    state.put(trg, new HashSet<>());
+        //}
+        //state.get(trg).add(src);
     }
 
     public HashMap<Long, HashSet<Long>> returnState() {

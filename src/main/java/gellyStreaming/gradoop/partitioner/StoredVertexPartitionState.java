@@ -2,6 +2,7 @@ package gellyStreaming.gradoop.partitioner;
 
 import java.io.Serializable;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -10,11 +11,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class StoredVertexPartitionState implements Serializable{
 
-    private final HashMap<Long, StoredVertex> record_map;
+    public final HashMap<Long, StoredVertex> record_map;
     private final AtomicInteger[] machines_load_edges;
     private final AtomicInteger[] machines_load_vertices;
 
     int MAX_LOAD;
+
 
     public StoredVertexPartitionState(int k) {
 
@@ -32,6 +34,14 @@ public class StoredVertexPartitionState implements Serializable{
         //		out = new DatWriter(GLOBALS.OUTPUT_FILE_NAME+".edges");
         //	}
 
+    }
+
+    public Iterator<Byte> getPartitions(Long x) {
+        if(record_map.containsKey(x)) {
+            return record_map.get(x).getPartitions();
+        } else {
+            return null;
+        }
     }
 
     public void incrementMachineLoadVertices(int m) {
