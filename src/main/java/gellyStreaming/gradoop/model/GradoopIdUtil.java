@@ -7,4 +7,11 @@ public class GradoopIdUtil {
         int mod = (gradoopId.hashCode())%(allKeys.length);
         return allKeys[mod].equals(currentKey);
     }
+
+    public static Long getLong(GradoopId gradoopId) {
+        String s = gradoopId.toString();
+        // example: 00000000ffffff0000000000
+        String substring = s.substring(8,14);
+        return Long.parseLong(substring, 16);
+    }
 }

@@ -2,7 +2,9 @@ package gellyStreaming.gradoop.model;
 
 
 import gellyStreaming.gradoop.algorithms.TriangleCountingAlg1;
+import gellyStreaming.gradoop.algorithms.TriangleCountingAlg2;
 import gellyStreaming.gradoop.algorithms.TriangleCountingAlg3;
+import gellyStreaming.gradoop.algorithms.TriangleCountingAlg4;
 import gellyStreaming.gradoop.partitioner.*;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.FilterFunction;
@@ -10,6 +12,8 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.configuration.*;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.core.fs.FileSystem;
@@ -18,6 +22,7 @@ import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
@@ -184,7 +189,7 @@ public class Tests {
         //FennelPartitioner fennelPartitioner = new FennelPartitioner();
         //HashMap<Long, HashSet<Long>> state = fennelPartitioner.AL4(edgeDataStream);
         //System.out.println(state.toString());
-        HelpState state = new HelpState();
+        HelpState state = new HelpState(true);
         FileReader fr = new FileReader("src/main/resources/email-Eu-core.txt");
         BufferedReader br = new BufferedReader(fr);
         String line;
@@ -292,6 +297,69 @@ public class Tests {
 
     }
 
+    public static void vertexBasedTriangleCounting() throws IOException, InterruptedException {
+        int numberOfPartitions = 2;
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
+        //        1005, 25571);
+        SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+                //"src/main/resources/Cit-HepPh.txt");
+        "src/main/resources/email-Eu-core.txt");
+        tempEdges = tempEdges.undirected();
+        env.setParallelism(numberOfPartitions);
+        QueryState QS = new QueryState();
+        GraphState GS1 = tempEdges.buildState(QS, "AL", 500000L, 20000L,
+                numberOfPartitions, false, 100000,
+                //new TriangleCountingAlg4(fennel));
+                //new TriangleCountingAlg3());
+                new TriangleCountingAlg2(fennel, 1000));
+                //null);
+        /*
+        try {
+            //GS1.getAlgorithmOutput().print();
+            GS1.getDecoupledOutput().keyBy(new KeySelector<Tuple4<Integer, Integer[], Long, Long>, Integer>() {
+                @Override
+                public Integer getKey(Tuple4<Integer, Integer[], Long, Long> integerLongLongTuple4) throws Exception {
+                    return integerLongLongTuple4.f0;
+                }
+            }).process(new KeyedProcessFunction<Integer, Tuple4<Integer, Integer[], Long, Long>, Object>() {
+                @Override
+                public void processElement(Tuple4<Integer, Integer[], Long, Long> integerLongLongTuple4, Context context, Collector<Object> collector) throws Exception {
+                    TriangleCountingAlg3 alg = new TriangleCountingAlg3();
+                    collector.collect(alg.doAlgorithm(null, QS, integerLongLongTuple4.f0, integerLongLongTuple4.f1, integerLongLongTuple4.f2, integerLongLongTuple4.f3));
+                }
+            }).print();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+         */
+        try{
+            GS1.getAlgorithmOutput().print();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        try {
+            JobClient jobClient = env.executeAsync();
+            GS1.overWriteQS(jobClient.getJobID());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void GradoopIdTests() {
+        for(int i = 0; i < 1000; i++) {
+            //int i = 16777215;
+            GradoopId test = new GradoopId(0, i, (short) 0, 0);
+            System.out.println(i + " : " + test.toString());
+            System.out.println(GradoopIdUtil.getLong(test));
+        }
+    }
+
 
 
     public static void main(String[] args) throws Exception {
@@ -304,11 +372,66 @@ public class Tests {
         //builtState();
         //testBuildingState();
         //makeAL();
-        testVertexPartitioner();
+        //testVertexPartitioner();
+        vertexBasedTriangleCounting();
+        //GradoopIdTests();
         //Thread.sleep(100000);
         //Runtime rt2 = Runtime.getRuntime();
         //long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;
         //System.out.println("Used MB after: "+ usedMB2);
+    }
+
+    public static FennelPartitioning fennel;
+
+    static SimpleTemporalEdgeStream makeEdgesTemporal(StreamExecutionEnvironment env, Integer numberOfPartitions, String filepath,
+                                                      Integer vertexCount, Integer edgeCount) throws IOException {
+        fennel = new FennelPartitioning();
+        DataStream<Tuple2<Edge<Long, String>, Integer>> edges = fennel.getFennelPartitionedEdges(
+                env, filepath, numberOfPartitions, vertexCount, edgeCount
+        );
+        GradoopIdSet graphId = new GradoopIdSet();
+        DataStream<TemporalEdge> tempEdges = edges.map(new MapFunction<Tuple2<Edge<Long, String>, Integer>, TemporalEdge>() {
+            @Override
+            public TemporalEdge map(Tuple2<Edge<Long, String>, Integer> edge) throws Exception {
+                Map<String, Object> properties = new HashMap<>();
+                properties.put("partitionID", edge.f1);
+                properties.put("sourceVertexId", edge.f0.getSource());
+                properties.put("targetVertexId", edge.f0.getTarget());
+                return new TemporalEdge(
+                        GradoopId.get(),
+                        "watched",
+                        new GradoopId(0, edge.f0.getSource().intValue(), (short)0, 0),
+                        new GradoopId(0, edge.f0.getTarget().intValue(), (short)0, 0),
+                        Properties.createFromMap(properties),
+                        graphId,
+                        0L, //       (valid) starting time
+                        Long.MAX_VALUE
+                );
+            }
+        });
+        SourceFunction<TemporalEdge> infinite = new SourceFunction<TemporalEdge>() {
+            @Override
+            public void run(SourceContext<TemporalEdge> sourceContext) throws Exception {
+                while(true) {
+                    sourceContext.collect(new TemporalEdge(null, null, null, null,
+                            null, null, null, null));
+                    Thread.sleep(100);
+                }
+            }
+            @Override
+            public void cancel() {
+
+            }
+        };
+        DataStream<TemporalEdge> makeInfinite =  env.addSource(infinite);
+        DataStream<TemporalEdge> finalEdges = tempEdges.union(makeInfinite)
+                .filter(new FilterFunction<TemporalEdge>() {
+                    @Override
+                    public boolean filter(TemporalEdge edge) throws Exception {
+                        return edge.getId() != null;
+                    }
+                });
+        return new SimpleTemporalEdgeStream(finalEdges, env, graphId);
     }
 
     static SimpleTemporalEdgeStream getSimpleTemporalMovieEdgesStream(StreamExecutionEnvironment env, Integer numberOfPartitions, String filepath) throws IOException {

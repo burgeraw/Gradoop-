@@ -10,6 +10,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -37,7 +38,7 @@ public class GraphState implements Serializable {
     private static int batchSize;
     private static Long windowSize;
     private static Long slide;
-    private SingleOutputStreamOperator<Tuple3<Integer, Integer[], Long>> decoupledOutput = null;
+    private SingleOutputStreamOperator<Tuple4<Integer, Integer[], Long, Long>> decoupledOutput = null;
     private SingleOutputStreamOperator<String> algorithmOutput = null;
     private static Algorithm algorithm;
     private static long firstTimestamp;
@@ -68,11 +69,13 @@ public class GraphState implements Serializable {
         if (algorithm == null) {
             switch (strategy) {
                 //Example how to use decoupled output:
+                /*
                 case "triangle" :
                 input.process(new ALdecoupled())
                             .keyBy(
                                     (KeySelector<Tuple3<Integer, Integer[], Long>, Integer>) integerLongTuple3 -> integerLongTuple3.f0)
                             .process(new TriangleCounter()).print();
+                 */
                 case "EL":
                     decoupledOutput = input.process(new ELDecoupled());
                     break;
@@ -109,7 +112,7 @@ public class GraphState implements Serializable {
         QS.initialize(jobID);
     }
 
-    public DataStream<Tuple3<Integer, Integer[], Long>> getDecoupledOutput() throws Exception {
+    public DataStream<Tuple4<Integer, Integer[], Long, Long>> getDecoupledOutput() throws Exception {
         if(this.decoupledOutput == null) {
             throw new Exception("We have only algorithm output, no decoupled one. Set algorithm = null for " +
                     "decoupled output.");
@@ -127,91 +130,9 @@ public class GraphState implements Serializable {
         }
     }
 
-    //TODO rewrite to be in Algorithm format
-    //TriangleCounter
-    public static class TriangleCounter extends KeyedProcessFunction<Integer, Tuple3<Integer, Integer[], Long>, Integer> {
-
-        @Override
-        public void processElement(Tuple3<Integer, Integer[], Long> input, Context context, Collector<Integer> collector) throws Exception {
-            System.out.println("The input triangle counter received is: "+input.toString());
-            if (!GraphState.QS.isInitilized()) {
-                throw new Exception("We don't have Queryable State initialized.");
-            }
-            AtomicInteger triangleCounter = new AtomicInteger(0);
-            if (input.f0 != null) {
-                long maxValidTo = input.f2;
-                HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
-                int tries = 0;
-                int maxTries = 10;
-                for (int key : input.f1) {
-                    tries = 0;
-                    while (tries < maxTries ){//&& key != input.f0) {
-                        try {
-                            MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> tempState =
-                                    QS.getALState(key);
-                            for (Long timestamp : tempState.keys()) {
-                                if (timestamp <= maxValidTo) {
-                                    for(GradoopId src : tempState.get(timestamp).keySet()) {
-                                        if (!localAdjacencyList.containsKey(src)) {
-                                            localAdjacencyList.put(src, new HashMap<>());
-                                        }
-                                        localAdjacencyList.get(src).putAll(tempState.get(timestamp).get(src));
-                                    }
-                                }
-                            }
-                            tries = maxTries;
-                        } catch (Exception e) {
-                            tries++;
-                            if (tries >= maxTries) {
-                                throw new Exception("We tried to get state " + maxTries + " times, but failed. ");
-                            }
-                        }
-                    }
-                }
-                System.out.println("We got all states & now start counting triangles.");
-                System.out.println("Size state: "+localAdjacencyList.entrySet().size());
-                for (GradoopId srcId : localAdjacencyList.keySet()) {
-                    if(GradoopIdUtil.getModulo(srcId, input.f0, input.f1)) {
-                        Set<GradoopId> neighboursSet = localAdjacencyList.get(srcId).keySet();
-                        GradoopId[] neighbours = neighboursSet.toArray(GradoopId[]::new);
-                        for (int i = 0; i < neighbours.length; i++) {
-                            GradoopId neighbour1 = neighbours[i];
-                            if (neighbour1.compareTo(srcId) > 0) {
-                                for (int j = 0; j < neighbours.length; j++) {
-                                    GradoopId neighbour2 = neighbours[j];
-                                    if (i != j && neighbour2.compareTo(neighbour1) > 0) {
-                                        AtomicBoolean triangle = new AtomicBoolean(false);
-                                        if (localAdjacencyList.containsKey(neighbour1)) {
-                                            if (localAdjacencyList.get(neighbour1).containsKey(neighbour2)) {
-                                                triangle.set(true);
-                                            }
-                                        }
-                                        // Not necessary since it should've been saved in both directions, but
-                                        // can be considered as a making sure check.
-                                        if (!triangle.get() && localAdjacencyList.containsKey(neighbour2)) {
-                                            if (localAdjacencyList.get(neighbour2).containsKey(neighbour1)) {
-                                                triangle.set(true);
-                                                System.out.println("Something went wrong saving the edges in state." +
-                                                        " They haven't been saved in both directions. ");
-                                            }
-                                        }
-                                        if (triangle.get()) {
-                                            triangleCounter.getAndIncrement();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            System.out.println("In partition "+input.f0+" we found "+triangleCounter.get()+" triangles.");
-            collector.collect(triangleCounter.get());
-        }
-    }
 
     // Sorted EL decoupled
-    public static class SortedELDecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple3<Integer, Integer[], Long>> {
+    public static class SortedELDecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple4<Integer, Integer[], Long, Long>> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
@@ -242,7 +163,7 @@ public class GraphState implements Serializable {
         }
 
         @Override
-        public void processElement(TemporalEdge edge, Context context, Collector<Tuple3<Integer, Integer[], Long>> collector) throws Exception {
+        public void processElement(TemporalEdge edge, Context context, Collector<Tuple4<Integer, Integer[], Long, Long>> collector) throws Exception {
 
             if(edgeCountSinceTimestamp.value() == null) {
                 edgeCountSinceTimestamp.update(0);
@@ -262,7 +183,11 @@ public class GraphState implements Serializable {
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
                 edgeCountSinceTimestamp.update(0);
-                lastTimestamp.update(context.timerService().currentProcessingTime());
+                long newtimestamp = context.timerService().currentProcessingTime();
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
                 if(!lazyPurging) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
                 }
@@ -291,9 +216,9 @@ public class GraphState implements Serializable {
         }
 
         @Override
-        public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple3<Integer, Integer[], Long>> out) throws Exception {
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple4<Integer, Integer[], Long, Long>> out) throws Exception {
             if(lazyPurging) {
-
+//TODO test & implement lazy purging
             } else {
                 sortedEdgeList.remove(timestamp);
             }
@@ -301,7 +226,7 @@ public class GraphState implements Serializable {
                 System.out.println("We are now triggering output");
                 nextOutputTimestamp.update(timestamp + slide);
                 ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                out.collect(Tuple3.of(ctx.getCurrentKey(), keys, timestamp + windowSize));
+                out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
             }
         }
     }
@@ -354,7 +279,11 @@ public class GraphState implements Serializable {
             }
             if (edgeCountSinceTimestamp.value() == batchSize) {
                 edgeCountSinceTimestamp.update(0);
-                lastTimestamp.update(context.timerService().currentProcessingTime());
+                long newtimestamp = context.timerService().currentProcessingTime();
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
                 if(!lazyPurging) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
                 }
@@ -400,7 +329,7 @@ public class GraphState implements Serializable {
     }
 
     // Edge list decoupled.
-    public static class ELDecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple3<Integer, Integer[], Long>> {
+    public static class ELDecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple4<Integer, Integer[], Long, Long>> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
@@ -431,7 +360,7 @@ public class GraphState implements Serializable {
         }
 
         @Override
-        public void processElement(TemporalEdge edge, Context context, Collector<Tuple3<Integer, Integer[], Long>> collector) throws Exception {
+        public void processElement(TemporalEdge edge, Context context, Collector<Tuple4<Integer, Integer[], Long, Long>> collector) throws Exception {
             if(edgeCountSinceTimestamp.value() == null) {
                 edgeCountSinceTimestamp.update(0);
             }
@@ -450,7 +379,11 @@ public class GraphState implements Serializable {
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
                 edgeCountSinceTimestamp.update(0);
-                lastTimestamp.update(context.timerService().currentProcessingTime());
+                long newtimestamp = context.timerService().currentProcessingTime();
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
                 if(!lazyPurging) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
                 }
@@ -475,7 +408,7 @@ public class GraphState implements Serializable {
         }
 
         @Override
-        public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple3<Integer, Integer[], Long>> out) throws Exception {
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple4<Integer, Integer[], Long, Long>> out) throws Exception {
             if(lazyPurging) {
 
             } else {
@@ -485,7 +418,7 @@ public class GraphState implements Serializable {
                 System.out.println("We are now triggering output");
                 nextOutputTimestamp.update(timestamp + slide);
                 ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                out.collect(Tuple3.of(ctx.getCurrentKey(), GraphState.keys, timestamp+windowSize));
+                out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp+windowSize));
             }
         }
     }
@@ -538,7 +471,11 @@ public class GraphState implements Serializable {
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
                 edgeCountSinceTimestamp.update(0);
-                lastTimestamp.update(context.timerService().currentProcessingTime());
+                long newtimestamp = context.timerService().currentProcessingTime();
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
                 if(!lazyPurging) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
                 }
@@ -581,7 +518,7 @@ public class GraphState implements Serializable {
     }
 
     // Adjacency List
-    public static class ALdecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple3<Integer, Integer[], Long>> {
+    public static class ALdecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple4<Integer, Integer[], Long, Long>> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
@@ -612,7 +549,7 @@ public class GraphState implements Serializable {
         }
 
         @Override
-        public void processElement(TemporalEdge edge, Context context, Collector<Tuple3<Integer, Integer[], Long>> collector) throws Exception {
+        public void processElement(TemporalEdge edge, Context context, Collector<Tuple4<Integer, Integer[], Long, Long>> collector) throws Exception {
             if(edgeCountSinceTimestamp.value() == null) {
                 edgeCountSinceTimestamp.update(0);
             }
@@ -631,7 +568,11 @@ public class GraphState implements Serializable {
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
                 edgeCountSinceTimestamp.update(0);
-                lastTimestamp.update(context.timerService().currentProcessingTime());
+                long newtimestamp = context.timerService().currentProcessingTime();
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
                 if(!lazyPurging) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value()+windowSize);
                 }
@@ -659,7 +600,7 @@ public class GraphState implements Serializable {
         }
 
         @Override
-        public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple3<Integer, Integer[], Long>> out) throws Exception {
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple4<Integer, Integer[], Long, Long>> out) throws Exception {
             if(lazyPurging) {
 
             } else {
@@ -669,7 +610,7 @@ public class GraphState implements Serializable {
                 System.out.println("We are now triggering output");
                 nextOutputTimestamp.update(timestamp + slide);
                 ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                out.collect(Tuple3.of(ctx.getCurrentKey(), GraphState.keys, timestamp+windowSize));
+                out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp+windowSize));
             }
         }
     }
@@ -727,7 +668,11 @@ public class GraphState implements Serializable {
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
                 edgeCountSinceTimestamp.update(0);
-                lastTimestamp.update(context.timerService().currentProcessingTime());
+                long newtimestamp = context.timerService().currentProcessingTime();
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
                 if(!lazyPurging) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value()+windowSize);
                 } else {
@@ -862,6 +807,9 @@ public class GraphState implements Serializable {
             if(edgeCountSinceTimestamp.value() == 50) {
                 edgeCountSinceTimestamp.update(0);
                 currentTime = context.timerService().currentProcessingTime();
+                if(currentTime == lastTimestamp.value()) {
+                    currentTime++;
+                }
                 lastTimestamp.update(currentTime);
             }
 
@@ -977,7 +925,11 @@ public class GraphState implements Serializable {
             }
             edgesSinceLastTimer.update(edgesSinceLastTimer.value()+1);
             if(edgesSinceLastTimer.value() > 50) {
-                lastTimerPull.update(context.timerService().currentProcessingTime());
+                long newtimestamp = context.timerService().currentProcessingTime();
+                if(newtimestamp == lastTimerPull.value()) {
+                    newtimestamp++;
+                }
+                lastTimerPull.update(newtimestamp);
                 edgesSinceLastTimer.update(0);
             }
             long currentTime = lastTimerPull.value();

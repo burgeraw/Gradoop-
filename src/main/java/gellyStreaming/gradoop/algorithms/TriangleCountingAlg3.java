@@ -21,14 +21,19 @@ public class TriangleCountingAlg3 implements Algorithm<String, MapState<Long, Ha
             throw new Exception("We don't have Queryable State initialized.");
         }
         HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
+        if(localState == null) {
+            localState = QS.getALState(localKey);
+        }
         for(long timestamp: localState.keys()) {
-            for(GradoopId src : localState.get(timestamp).keySet()) {
-                //if(GradoopIdUtil.getModulo(src, localKey, allKeys)) {
+            if(timestamp <= maxValidTo && timestamp>= from) {
+                for (GradoopId src : localState.get(timestamp).keySet()) {
+                    //if(GradoopIdUtil.getModulo(src, localKey, allKeys)) {
                     if (!localAdjacencyList.containsKey(src)) {
                         localAdjacencyList.put(src, new HashMap<>());
                     }
                     localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
-                //}
+                    //}
+                }
             }
         }
         for(int key : allKeys) {
@@ -40,7 +45,7 @@ public class TriangleCountingAlg3 implements Algorithm<String, MapState<Long, Ha
                         MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> tempState =
                                 QS.getALState(key);
                         for (Long timestamp : tempState.keys()) {
-                            if (timestamp <= maxValidTo) {
+                            if (timestamp <= maxValidTo && timestamp >= from) {
                                 for(GradoopId src : tempState.get(timestamp).keySet()) {
                                     if (!localAdjacencyList.containsKey(src)) {
                                         localAdjacencyList.put(src, new HashMap<>());

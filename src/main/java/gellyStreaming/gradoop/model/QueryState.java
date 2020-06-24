@@ -11,16 +11,14 @@ import org.apache.flink.queryablestate.client.QueryableStateClient;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
-
+import java.io.Serializable;
 import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class QueryState {
+public class QueryState implements Serializable {
 
     private QueryableStateClient client;
     private MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
@@ -227,20 +225,15 @@ public class QueryState {
                         },
                         descriptorAL);
         AtomicReference<Boolean> results = new AtomicReference<>(false);
-        final Tuple1<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> def = new Tuple1<>();
+        //final Tuple1<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> def = new Tuple1<>();
         AtomicReference<Boolean> contains = new AtomicReference<>(null);
-        try {
-            def.f0 = resultFuture.get();
-            for(long timestamp: def.f0.keys()) {
-                contains.set(timestamp <= To && timestamp >= From && (
-                        (def.f0.get(timestamp).containsKey(src) && def.f0.get(timestamp).get(src).containsKey(trg))
-                                || (def.f0.get(timestamp).containsKey(trg) && def.f0.get(timestamp).get(trg).containsKey(src))));
-            }
-            results.set(true);
-        }catch (Exception e) {
-            throw e;
-            //System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+        //def.f0 = resultFuture.get();
+        for(long timestamp: resultFuture.get().keys()) {
+            contains.set(timestamp <= To && timestamp >= From && (
+                    (resultFuture.get().get(timestamp).containsKey(src) && resultFuture.get().get(timestamp).get(src).containsKey(trg))
+                            || (resultFuture.get().get(timestamp).containsKey(trg) && resultFuture.get().get(timestamp).get(trg).containsKey(src))));
         }
+        results.set(true);
         if(results.get()) {
             return contains.get();
         } else {
@@ -279,6 +272,36 @@ public class QueryState {
             throw new Exception();
         }
     }
+
+    public Boolean getALEdgeFromTo(Integer key, GradoopId srcVertex, GradoopId trgVertex, Long from, Long to) throws Exception {
+        CompletableFuture<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "adjacencyList",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptorAL);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        AtomicReference<Boolean> exists = new AtomicReference<>(null);
+        for(long timestamp: resultFuture.get().keys()) {
+            if(timestamp <= to && timestamp >= from) {
+                if(resultFuture.get().get(timestamp).containsKey(srcVertex)) {
+                    if (resultFuture.get().get(timestamp).get(srcVertex).containsKey(trgVertex)) {
+                        exists.set(true);
+                        break;
+                    }
+                }
+            }
+        }
+        results.set(true);
+        if(results.get()) {
+            return exists.get();
+        } else {
+            throw new Exception();
+        }
+    }
+
 
 
 
