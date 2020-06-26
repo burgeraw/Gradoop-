@@ -8,46 +8,33 @@ import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class TriangleCountingAlg1 implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
+
+// Working triangle counting alg for both edge & fennel partitioner, which duplicates entire state.
+public class TriangleCountingALRetrieveAllState implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
 
     @Override
     public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState,
-                              QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws Exception {
+                               QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws Exception {
         if (!QS.isInitilized()) {
             throw new Exception("We don't have Queryable State initialized.");
         }
-
-        HashSet<GradoopId> relevantVertexIds = new HashSet<>();
-
-        for(int key : allKeys) {
-            if(key != localKey) {
-                try {
-                    HashSet<GradoopId> allIds = QS.getALVertexListFromTo(key, from, maxValidTo);
-                    for(GradoopId id : allIds) {
-                        if(GradoopIdUtil.getModulo(id, localKey, allKeys)) {
-                            relevantVertexIds.add(id);
-                        }
-                    }
-                } catch (Exception e) {
-                    System.out.println(e);
-                }
-            }
-        }
-
         HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
+        if(localState == null) {
+            localState = QS.getALState(localKey);
+        }
         for(long timestamp: localState.keys()) {
-            for(GradoopId src : localState.get(timestamp).keySet()) {
-                if(GradoopIdUtil.getModulo(src, localKey, allKeys)) {
-                    relevantVertexIds.add(src);
+            if(timestamp <= maxValidTo && timestamp>= from) {
+                for (GradoopId src : localState.get(timestamp).keySet()) {
+                    //if(GradoopIdUtil.getModulo(src, localKey, allKeys)) {
                     if (!localAdjacencyList.containsKey(src)) {
                         localAdjacencyList.put(src, new HashMap<>());
                     }
                     localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
+                    //}
                 }
             }
         }
@@ -57,14 +44,17 @@ public class TriangleCountingAlg1 implements Algorithm<String, MapState<Long, Ha
                 int maxTries = 10;
                 while(tries < maxTries) {
                     try {
-                        GradoopId[] vertices = relevantVertexIds.toArray(GradoopId[]::new);
-                        HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> tempState =
-                                QS.getALVerticesFromTo(key, vertices, from, maxValidTo);
-                        for(GradoopId src : tempState.keySet()) {
-                            if (!localAdjacencyList.containsKey(src)) {
-                                localAdjacencyList.put(src, new HashMap<>());
+                        MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> tempState =
+                                QS.getALState(key);
+                        for (Long timestamp : tempState.keys()) {
+                            if (timestamp <= maxValidTo && timestamp >= from) {
+                                for(GradoopId src : tempState.get(timestamp).keySet()) {
+                                    if (!localAdjacencyList.containsKey(src)) {
+                                        localAdjacencyList.put(src, new HashMap<>());
+                                    }
+                                    localAdjacencyList.get(src).putAll(tempState.get(timestamp).get(src));
+                                }
                             }
-                            localAdjacencyList.get(src).putAll(tempState.get(src));
                         }
                         tries = maxTries;
                     } catch (Exception e) {
@@ -78,6 +68,7 @@ public class TriangleCountingAlg1 implements Algorithm<String, MapState<Long, Ha
         }
         AtomicInteger triangleCount = new AtomicInteger(0);
         for (GradoopId srcId : localAdjacencyList.keySet()) {
+            if(GradoopIdUtil.getModulo(srcId, localKey, allKeys)) {
                 Set<GradoopId> neighboursSet = localAdjacencyList.get(srcId).keySet();
                 GradoopId[] neighbours = neighboursSet.toArray(GradoopId[]::new);
                 for (int i = 0; i < neighbours.length; i++) {
@@ -97,18 +88,10 @@ public class TriangleCountingAlg1 implements Algorithm<String, MapState<Long, Ha
                                 if (!triangle.get() && localAdjacencyList.containsKey(neighbour2)) {
                                     if (localAdjacencyList.get(neighbour2).containsKey(neighbour1)) {
                                         triangle.set(true);
+                                        System.out.println("Something went wrong saving the edges in state." +
+                                                " They haven't been saved in both directions. ");
                                     }
                                 }
-                                int counter = 0;
-                                while(!triangle.get() && counter < allKeys.length) {
-                                    if(!allKeys[counter].equals(localKey)) {
-                                        if(QS.ALcontainsEdgeFromTo(allKeys[counter], neighbour1, neighbour2, from, maxValidTo)) {
-                                            triangle.set(true);
-                                        }
-                                    }
-                                    counter++;
-                                }
-
                                 if (triangle.get()) {
                                     triangleCount.getAndIncrement();
                                 }
@@ -116,6 +99,7 @@ public class TriangleCountingAlg1 implements Algorithm<String, MapState<Long, Ha
                         }
                     }
                 }
+            }
         }
         return "In partition "+localKey+" we found "+triangleCount.get()+" triangles ";
     }

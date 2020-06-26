@@ -4,7 +4,6 @@ import gellyStreaming.gradoop.model.Algorithm;
 import gellyStreaming.gradoop.model.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.partitioner.FennelPartitioning;
-import org.apache.flink.api.common.functions.RichFunction;
 import org.apache.flink.api.common.state.MapState;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
@@ -14,16 +13,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class TriangleCountingAlg5 implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
+public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
 
-    // Granularity of retrieval: getting the vertexID & all its neighbours from remote part.
+    // Granularity of retrieval: getting the vertexID & all its neighbours from remote partition.
     private final FennelPartitioning fennel;
     private final int QSbatchsize;
     private final boolean caching;
-    ConcurrentHashMap<Integer, HashMap<GradoopId, LinkedList<GradoopId>>> QSqueue;
-    ConcurrentHashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> cache;
 
-    public TriangleCountingAlg5(FennelPartitioning fennel, int QSbatchsize, boolean caching) {
+    public TriangleCountingFennelALRetrieveVertex(FennelPartitioning fennel, int QSbatchsize, boolean caching) {
         this.fennel = fennel;
         if(fennel==null) {
             throw new InstantiationError("Fennel vertex partitioning hasn't been instantiated.");
@@ -152,6 +149,7 @@ public class TriangleCountingAlg5 implements Algorithm<String, MapState<Long, Ha
                     }
                 }
             }
+            // Retrieved info doesn't need to be put in cache, because we won't use it again after.
             if(QSqueueSize.get()!= 0) {
                 for (int partitionToQuery : QSqueue.keySet()) {
                     GradoopId[] list = QSqueue.get(partitionToQuery).keySet().toArray(GradoopId[]::new);
@@ -161,15 +159,6 @@ public class TriangleCountingAlg5 implements Algorithm<String, MapState<Long, Ha
                             HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> temp = QS.getALVerticesFromTo(
                                     partitionToQuery, list, from, maxValidTo);
                             for(GradoopId beenQueried : list) {
-                                if (caching) {
-                                    if (!cache.containsKey(beenQueried)) {
-                                        cache.put(beenQueried, new HashMap<>());
-                                    }
-                                    if(temp.get(beenQueried)==null) {
-                                        System.out.println("big error");
-                                    }
-                                    cache.get(beenQueried).putAll(temp.get(beenQueried));
-                                }
                                 for (GradoopId potentialTriangle : QSqueue.get(partitionToQuery).get(beenQueried)) {
                                     if (temp.get(beenQueried).containsKey(potentialTriangle)) {
                                         triangleCount.getAndIncrement();

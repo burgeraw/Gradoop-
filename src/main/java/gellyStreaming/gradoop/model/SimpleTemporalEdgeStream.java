@@ -1,25 +1,17 @@
 package gellyStreaming.gradoop.model;
 
-import gellyStreaming.gradoop.algorithms.TriangleCount;
-import gellyStreaming.gradoop.algorithms.TriangleEstimator;
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.graph.Edge;
 import org.apache.flink.graph.EdgeDirection;
-import org.apache.flink.runtime.dispatcher.SingleJobJobGraphStore;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
-import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
-import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
@@ -30,8 +22,6 @@ import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 import org.gradoop.temporal.model.impl.pojo.TemporalGraphHead;
 import org.gradoop.temporal.model.impl.pojo.TemporalVertex;
 
-import java.io.IOException;
-import java.net.UnknownHostException;
 import java.util.*;
 
 public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> {
@@ -461,64 +451,9 @@ keyed on source or target vertex --> good for adjacency list
         }
     }
 
-    private static int makeInt(byte b3, byte b2, byte b1, byte b0) {
-        return b3 << 24 | (b2 & 255) << 16 | (b1 & 255) << 8 | b0 & 255;
-    }
-
-    public DataStream<Double> getGlobalTriangles(int k, double alpha) {
-        int randomSeed = new Random().nextInt();
-        return this.edges
-                .map(new MapFunction<TemporalEdge, Tuple2<Integer, Integer>>() {
-                    @Override
-                    public Tuple2<Integer, Integer> map(TemporalEdge edge) throws Exception {
-                        //byte[] bytes = edge.getSourceId().toByteArray();
-                        //int src = makeInt(bytes[3], bytes[2],bytes[1],bytes[0]);
-                        //byte[] bytes1 = edge.getTargetId().toByteArray();
-                        //int trg = makeInt(bytes1[3], bytes1[2],bytes1[1],bytes1[0]);
-                        int src = Integer.parseUnsignedInt(edge.getSourceId().toString().replace("0",""), 16);
-                        int trg = Integer.parseUnsignedInt(edge.getTargetId().toString().replace("0",""), 16);
-                        return Tuple2.of(src, trg);
-                    }
-                })
-                .keyBy(0,1)
-                .process(new GlobalTriangle(k, alpha));
-
-    }
 
     public DataStreamSink<TemporalEdge> print() {
         return this.edges.print();
-    }
-
-    private class GlobalTriangle extends ProcessFunction<Tuple2<Integer, Integer>, Double> {
-
-        TriangleEstimator TE;
-
-        GlobalTriangle(int k, double alpha) {
-            TE = new TriangleEstimator(k, alpha, new Random().nextInt());
-        }
-        @Override
-        public void processElement(Tuple2<Integer, Integer> integerIntegerTuple2, Context context, Collector<Double> collector) throws Exception {
-            TE.processElement(integerIntegerTuple2);
-            collector.collect(TE.getGlobalTriangle());
-
-        }
-    }
-
-    public TriangleCount TriangleCount(int k, double alpha) {
-        return new TriangleCount(k, alpha, this.edges
-                .map(new MapFunction<TemporalEdge, Tuple2<Integer, Integer>>() {
-                    @Override
-                    public Tuple2<Integer, Integer> map(TemporalEdge edge) throws Exception {
-                        //byte[] bytes = edge.getSourceId().toByteArray();
-                        //int src = makeInt(bytes[3], bytes[2],bytes[1],bytes[0]);
-                        //byte[] bytes1 = edge.getTargetId().toByteArray();
-                        //int trg = makeInt(bytes1[3], bytes1[2],bytes1[1],bytes1[0]);
-                        int src = Integer.parseUnsignedInt(edge.getSourceId().toString().replace("0",""), 16);
-                        int trg = Integer.parseUnsignedInt(edge.getTargetId().toString().replace("0",""), 16);
-                        return Tuple2.of(src, trg);
-                    }
-                })
-                .keyBy(0,1));
     }
 
 

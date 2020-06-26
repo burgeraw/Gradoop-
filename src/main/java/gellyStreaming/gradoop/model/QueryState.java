@@ -16,6 +16,7 @@ import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class QueryState implements Serializable {
@@ -214,8 +215,8 @@ public class QueryState implements Serializable {
         }
     }
 
-    public Boolean ALcontainsEdgeFromTo(
-            Integer key, GradoopId src, GradoopId trg, long From, long To) throws Exception {
+    public Boolean[] ALcontainsEdgesFromTo(
+            Integer key, GradoopId[] src, GradoopId[] trg, long From, long To) throws Exception {
         CompletableFuture<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> resultFuture =
                 client.getKvState(
                         jobID,
@@ -225,17 +226,23 @@ public class QueryState implements Serializable {
                         },
                         descriptorAL);
         AtomicReference<Boolean> results = new AtomicReference<>(false);
-        //final Tuple1<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> def = new Tuple1<>();
-        AtomicReference<Boolean> contains = new AtomicReference<>(null);
-        //def.f0 = resultFuture.get();
+        Boolean[] contains = new Boolean[src.length];
+        for(int j = 0; j < src.length; j++) {
+            contains[j] = false;
+        }
         for(long timestamp: resultFuture.get().keys()) {
-            contains.set(timestamp <= To && timestamp >= From && (
-                    (resultFuture.get().get(timestamp).containsKey(src) && resultFuture.get().get(timestamp).get(src).containsKey(trg))
-                            || (resultFuture.get().get(timestamp).containsKey(trg) && resultFuture.get().get(timestamp).get(trg).containsKey(src))));
+            if (timestamp <= To && timestamp >= From) {
+                for (int i = 0; i < src.length; i++) {
+                    if (resultFuture.get().get(timestamp).containsKey(src[i]) &&
+                            resultFuture.get().get(timestamp).get(src[i]).containsKey(trg[i])) {
+                        contains[i] = true;
+                    }
+                }
+            }
         }
         results.set(true);
         if(results.get()) {
-            return contains.get();
+            return contains;
         } else {
             throw new Exception();
         }

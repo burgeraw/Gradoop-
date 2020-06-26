@@ -162,7 +162,7 @@ public class Tests {
         tempEdges = tempEdges.undirected();
         QueryState QS = new QueryState();
         GraphState GS1 = tempEdges.buildState(QS, "AL", 500000L, 60000L,
-                numberOfPartitions, false, 100000, new TriangleCountingAlg3());
+                numberOfPartitions, false, 100000, new TriangleCountingALRetrieveAllState());
         try {
             GS1.getAlgorithmOutput().print();
         } catch (Exception e) {
@@ -300,31 +300,27 @@ public class Tests {
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
-        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/Cit-HepPh",
-        //        34546,421578);
-        SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
-                1005, 25571); //105.461 triangles
+        SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/Cit-HepPh",
+                34546,421578); //1.276.868 triangles
+        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
+        //        1005, 25571); //105.461 triangles
         //SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
-                //"src/main/resources/Cit-HepPh.txt");
+        //        "src/main/resources/Cit-HepPh.txt");
         //"src/main/resources/email-Eu-core.txt");
         //tempEdges = tempEdges.undirected();
         env.setParallelism(numberOfPartitions);
         QueryState QS = new QueryState();
-        GraphState GS1 = tempEdges.buildState(QS, "AL", 5000000L, 20000L,
-                numberOfPartitions, true, 1000,
-                //new TriangleCountingAlg4(fennel));
-                new TriangleCountingAlg5(fennel, 1, true));
-                //new TriangleCountingAlg3());
-                //new TriangleCountingAlg2(fennel, 10000, true));
-                //null);
+        GraphState GS = tempEdges.buildState(QS, "AL", 5000000L, 30000L,
+                numberOfPartitions, true, 10000,
+                new TriangleCountingFennelALRetrieveEdge(fennel, 10000000, true));
         try{
-            GS1.getAlgorithmOutput().print();
+            GS.getAlgorithmOutput().print();
         } catch (Exception e) {
             e.printStackTrace();
         }
         try {
             JobClient jobClient = env.executeAsync();
-            GS1.overWriteQS(jobClient.getJobID());
+            GS.overWriteQS(jobClient.getJobID());
         } catch (Exception e) {
             e.printStackTrace();
         }
