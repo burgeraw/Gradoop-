@@ -1,10 +1,7 @@
 package gellyStreaming.gradoop.model;
 
 
-import gellyStreaming.gradoop.algorithms.TriangleCountingAlg1;
-import gellyStreaming.gradoop.algorithms.TriangleCountingAlg2;
-import gellyStreaming.gradoop.algorithms.TriangleCountingAlg3;
-import gellyStreaming.gradoop.algorithms.TriangleCountingAlg4;
+import gellyStreaming.gradoop.algorithms.*;
 import gellyStreaming.gradoop.partitioner.*;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.FilterFunction;
@@ -190,7 +187,8 @@ public class Tests {
         //HashMap<Long, HashSet<Long>> state = fennelPartitioner.AL4(edgeDataStream);
         //System.out.println(state.toString());
         HelpState state = new HelpState(true);
-        FileReader fr = new FileReader("src/main/resources/email-Eu-core.txt");
+        //FileReader fr = new FileReader("src/main/resources/email-Eu-core.txt");
+        FileReader fr = new FileReader("src/main/resources/Cit-HepPh.txt");
         BufferedReader br = new BufferedReader(fr);
         String line;
         int counter = 0;
@@ -206,9 +204,7 @@ public class Tests {
 
         HashMap<Long, HashSet<Long>> stateFinal = state.returnState();
 
-        File output = new File("resources/AL/email-Eu-core");
-        // total edges = 25570
-        // total vertices = 10005
+        File output = new File("resources/AL/Cit-HepPh");
         try (BufferedWriter bf = new BufferedWriter(new FileWriter(output))) {
             for (long src : stateFinal.keySet()) {
                 bf.write( src + ":" + Arrays.toString(stateFinal.get(src).toArray()) );
@@ -304,40 +300,23 @@ public class Tests {
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
-        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
-        //        1005, 25571);
-        SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/Cit-HepPh",
+        //        34546,421578);
+        SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
+                1005, 25571); //105.461 triangles
+        //SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
                 //"src/main/resources/Cit-HepPh.txt");
-        "src/main/resources/email-Eu-core.txt");
-        tempEdges = tempEdges.undirected();
+        //"src/main/resources/email-Eu-core.txt");
+        //tempEdges = tempEdges.undirected();
         env.setParallelism(numberOfPartitions);
         QueryState QS = new QueryState();
-        GraphState GS1 = tempEdges.buildState(QS, "AL", 500000L, 20000L,
-                numberOfPartitions, false, 100000,
+        GraphState GS1 = tempEdges.buildState(QS, "AL", 5000000L, 20000L,
+                numberOfPartitions, true, 1000,
                 //new TriangleCountingAlg4(fennel));
+                new TriangleCountingAlg5(fennel, 1, true));
                 //new TriangleCountingAlg3());
-                new TriangleCountingAlg2(fennel, 1000));
+                //new TriangleCountingAlg2(fennel, 10000, true));
                 //null);
-        /*
-        try {
-            //GS1.getAlgorithmOutput().print();
-            GS1.getDecoupledOutput().keyBy(new KeySelector<Tuple4<Integer, Integer[], Long, Long>, Integer>() {
-                @Override
-                public Integer getKey(Tuple4<Integer, Integer[], Long, Long> integerLongLongTuple4) throws Exception {
-                    return integerLongLongTuple4.f0;
-                }
-            }).process(new KeyedProcessFunction<Integer, Tuple4<Integer, Integer[], Long, Long>, Object>() {
-                @Override
-                public void processElement(Tuple4<Integer, Integer[], Long, Long> integerLongLongTuple4, Context context, Collector<Object> collector) throws Exception {
-                    TriangleCountingAlg3 alg = new TriangleCountingAlg3();
-                    collector.collect(alg.doAlgorithm(null, QS, integerLongLongTuple4.f0, integerLongLongTuple4.f1, integerLongLongTuple4.f2, integerLongLongTuple4.f3));
-                }
-            }).print();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-         */
         try{
             GS1.getAlgorithmOutput().print();
         } catch (Exception e) {

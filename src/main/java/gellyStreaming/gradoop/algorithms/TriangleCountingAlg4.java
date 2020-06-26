@@ -18,6 +18,9 @@ public class TriangleCountingAlg4 implements Algorithm<String, MapState<Long, Ha
     private final HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> cache = new HashMap<>();
 
     public TriangleCountingAlg4(FennelPartitioning fennel) {
+        if(fennel == null) {
+            throw new InstantiationError("Fennel vertex partitioning hasn't been instantiated.");
+        }
         this.fennel = fennel;
     }
 
