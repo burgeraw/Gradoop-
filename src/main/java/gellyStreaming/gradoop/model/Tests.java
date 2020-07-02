@@ -294,7 +294,7 @@ public class Tests {
     }
 
     public static void vertexBasedTriangleCounting() throws IOException, InterruptedException {
-        int numberOfPartitions = 2;
+        int numberOfPartitions = 1;
         Configuration config = new Configuration();
         config.set(DeploymentOptions.ATTACHED, false);
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
@@ -305,19 +305,22 @@ public class Tests {
         //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
         //        1005, 25571); //105.461 triangles
         //SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+        //"src/main/resources/ER-20");
         //        "src/main/resources/Cit-HepPh.txt");
         //"src/main/resources/email-Eu-core.txt");
         //tempEdges = tempEdges.undirected();
         env.setParallelism(numberOfPartitions);
         QueryState QS = new QueryState();
-        GraphState GS = tempEdges.buildState(QS, "AL", 5000000L, 30000L,
-                numberOfPartitions, true, 10000,
-                new TriangleCountingFennelALRetrieveEdge(fennel, 10000000, true));
-        try{
-            GS.getAlgorithmOutput().print();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        GraphState GS = tempEdges.buildState(QS, "AL", 20000L, 10000L,
+                numberOfPartitions, true, 100000,
+                //new TriangleCountingFennelALRetrieveVertex(fennel, 10000000, true));
+                //new TriangleCountingALRetrieveAllState());
+                new TriangleCountingFennelALRetrieveVertex(fennel, 1000000000, false));
+                //null);
+                //new DistinctVertexCounterFennelAL(fennel));
+                //new TotalSizeALState());
+        GS.getAlgorithmOutput().print();
+        //GS.getDecoupledOutput().print();
         try {
             JobClient jobClient = env.executeAsync();
             GS.overWriteQS(jobClient.getJobID());
@@ -335,6 +338,44 @@ public class Tests {
         }
     }
 
+    public static void testDecoupled() throws IOException, InterruptedException {
+        int numberOfPartitions = 2;
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/Cit-HepPh",
+        //        34546,421578); //1.276.868 triangles
+        SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
+                1005, 25571); //105.461 triangles
+        //SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
+        //"src/main/resources/ER-20");
+        //        "src/main/resources/Cit-HepPh.txt");
+        //"src/main/resources/email-Eu-core.txt");
+        //tempEdges = tempEdges.undirected();
+        env.setParallelism(numberOfPartitions);
+        QueryState QS = new QueryState();
+        GraphState GS = tempEdges.buildState(QS, "AL", 16000L, 1000L,
+                numberOfPartitions, true, 100000,
+                //new TriangleCountingFennelALRetrieveVertex(fennel, 10000000, true));
+                //new TriangleCountingALRetrieveAllState());
+                //new TriangleCountingFennelALRetrieveEdge(
+                //        fennel, 1000000000, true));
+                null);
+        //GS.getAlgorithmOutput().print();
+        TriangleCountingFennelALRetrieveEdge alg = new TriangleCountingFennelALRetrieveEdge(
+                fennel, 1000000000, false);
+        GS.doDecoupledAlg(alg).print();
+        //GS.getAlgorithmOutput().print();
+        try {
+            JobClient jobClient = env.executeAsync();
+            GS.overWriteQS(jobClient.getJobID());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 
 
     public static void main(String[] args) throws Exception {
@@ -348,7 +389,8 @@ public class Tests {
         //testBuildingState();
         //makeAL();
         //testVertexPartitioner();
-        vertexBasedTriangleCounting();
+        //vertexBasedTriangleCounting();
+        testDecoupled();
         //GradoopIdTests();
         //Thread.sleep(100000);
         //Runtime rt2 = Runtime.getRuntime();

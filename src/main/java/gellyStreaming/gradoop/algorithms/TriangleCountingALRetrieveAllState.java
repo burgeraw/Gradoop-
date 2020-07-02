@@ -1,6 +1,5 @@
 package gellyStreaming.gradoop.algorithms;
 
-import gellyStreaming.gradoop.model.Algorithm;
 import gellyStreaming.gradoop.model.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import org.apache.flink.api.common.state.MapState;
@@ -59,8 +58,9 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                         tries = maxTries;
                     } catch (Exception e) {
                         tries++;
+                        Thread.sleep(10);
                         if (tries >= maxTries) {
-                            throw new Exception("We tried to get state " + maxTries + " times, but failed. ");
+                            throw new Exception("We tried to get state " + maxTries + " times, but failed. "+e);
                         }
                     }
                 }
@@ -83,13 +83,9 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                                         triangle.set(true);
                                     }
                                 }
-                                // Not necessary since it should've been saved in both directions, but
-                                // can be considered as a making sure check.
                                 if (!triangle.get() && localAdjacencyList.containsKey(neighbour2)) {
                                     if (localAdjacencyList.get(neighbour2).containsKey(neighbour1)) {
                                         triangle.set(true);
-                                        System.out.println("Something went wrong saving the edges in state." +
-                                                " They haven't been saved in both directions. ");
                                     }
                                 }
                                 if (triangle.get()) {

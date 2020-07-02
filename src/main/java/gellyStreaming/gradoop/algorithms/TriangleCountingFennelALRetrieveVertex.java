@@ -1,6 +1,5 @@
 package gellyStreaming.gradoop.algorithms;
 
-import gellyStreaming.gradoop.model.Algorithm;
 import gellyStreaming.gradoop.model.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.partitioner.FennelPartitioning;
@@ -124,17 +123,19 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
                                                                 }
                                                                 cache.get(beenQueried).putAll(temp.get(beenQueried));
                                                             }
-                                                            for (GradoopId potentialTriangle : QSqueue.get(partitionToQuery).get(beenQueried)) {
-                                                                if (temp.get(beenQueried).containsKey(potentialTriangle)) {
-                                                                    triangleCount.getAndIncrement();
+                                                                for (GradoopId potentialTriangle : QSqueue.get(partitionToQuery).get(beenQueried)) {
+                                                                    if (temp.get(beenQueried).containsKey(potentialTriangle)) {
+                                                                        triangleCount.getAndIncrement();
+                                                                    }
                                                                 }
-                                                            }
                                                         }
                                                         break;
-                                                    } catch (Exception e) {
+                                                    } catch (NullPointerException ignored) {}
+                                                    catch (Exception e) {
                                                         tries++;
+                                                        Thread.sleep(10);
                                                         if (tries == 10) {
-                                                            System.out.print("ERROR, tried 10 times & failed using QS.");
+                                                            System.out.println("ERROR, tried 10 times & failed using QS. "+e);
                                                         }
                                                     }
                                                 }
@@ -166,10 +167,12 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
                                 }
                             }
                             break;
-                        } catch (Exception e) {
+                        } catch (NullPointerException ignored) {}
+                        catch (Exception e) {
+                            Thread.sleep(10);
                             tries++;
                             if (tries == 10) {
-                                System.out.print("ERROR, tried 10 times & failed using QS.");
+                                System.out.println("ERROR, tried 10 times & failed using QS. "+e);
                             }
                         }
                     }

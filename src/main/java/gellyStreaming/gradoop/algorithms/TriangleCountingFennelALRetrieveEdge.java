@@ -1,20 +1,22 @@
 package gellyStreaming.gradoop.algorithms;
 
-import gellyStreaming.gradoop.model.Algorithm;
 import gellyStreaming.gradoop.model.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.partitioner.FennelPartitioning;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
+import java.io.Serializable;
+import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
+public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>>, Serializable {
 
     // Granularity of retrieval: only getting a boolean if the edge exists from remote partition.
     private final FennelPartitioning fennel;
@@ -30,11 +32,14 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
         this.caching = caching;
     }
 
+
+
     @Override
     public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState,
                               QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo)
             throws Exception {
         if (!QS.isInitilized()) {
+            System.out.println("No QS");
             throw new Exception("We don't have Queryable State initialized.");
         }
         ConcurrentHashMap<Integer, Tuple2<LinkedList<GradoopId>, LinkedList<GradoopId>>> QSqueue = new ConcurrentHashMap<>();
@@ -42,6 +47,20 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
         AtomicInteger QSqueueSize = new AtomicInteger(0);
 
         HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
+        int tries1 = 0;
+        while(localState==null && tries1 < 10) {
+            try {
+                localState = QS.getALState(localKey);
+            } catch (Exception e) {
+                tries1++;
+                if(tries1==10) {
+                    System.out.println("Error retrieving state. " + e);
+                }
+            }
+        }
+        if(localState==null) {
+            throw new Error("Everything is wrong.");
+        }
         for(long timestamp: localState.keys()) {
             if(timestamp >= from && timestamp <= maxValidTo) {
                 for (GradoopId src : localState.get(timestamp).keySet()) {
@@ -125,8 +144,9 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
                                                     break;
                                                 } catch (Exception e) {
                                                     tries++;
+                                                    Thread.sleep(10);
                                                     if (tries == 10) {
-                                                        System.out.print("ERROR, tried 10 times & failed using QS.");
+                                                        System.out.print("ERROR, tried 10 times & failed using QS. "+e);
                                                     }
                                                 }
                                             }
@@ -159,8 +179,9 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
                         break;
                     } catch (Exception e) {
                         tries++;
+                        Thread.sleep(10);
                         if (tries == 10) {
-                            System.out.print("ERROR, tried 10 times & failed using QS.");
+                            System.out.print("ERROR, tried 10 times & failed using QS. "+e);
                         }
                     }
                 }

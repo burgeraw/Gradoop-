@@ -1,5 +1,6 @@
 package gellyStreaming.gradoop.model;
 
+import gellyStreaming.gradoop.algorithms.Algorithm;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
@@ -21,13 +22,18 @@ import org.apache.flink.util.Collector;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
+import java.io.FileWriter;
+import java.io.IOException;
 import java.io.Serializable;
 import java.net.UnknownHostException;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+
+import static gellyStreaming.gradoop.model.Experiments.myLogWriter;
+
 
 public class GraphState implements Serializable {
 
@@ -42,6 +48,8 @@ public class GraphState implements Serializable {
     private SingleOutputStreamOperator<String> algorithmOutput = null;
     private static Algorithm algorithm;
     private static long firstTimestamp;
+    public static AtomicLong globalCounter = new AtomicLong(0);
+
 
     public GraphState(QueryState QS,
                       KeyedStream<TemporalEdge, Integer> input,
@@ -64,7 +72,8 @@ public class GraphState implements Serializable {
         GraphState.lazyPurging = lazyPurging;
         GraphState.batchSize = batchSize;
         GraphState.algorithm = algorithm;
-        GraphState.firstTimestamp = System.currentTimeMillis();
+        GraphState.firstTimestamp = System.currentTimeMillis()+1000L;
+
 
         if (algorithm == null) {
             switch (strategy) {
@@ -107,23 +116,47 @@ public class GraphState implements Serializable {
         }
     }
 
+    public DataStream<String> doDecoupledAlg(Algorithm alg) {
+        return decoupledOutput.keyBy(new KeySelector<Tuple4<Integer, Integer[], Long, Long>, Integer>() {
+            @Override
+            public Integer getKey(Tuple4<Integer, Integer[], Long, Long> integerLongLongTuple4) throws Exception {
+                return integerLongLongTuple4.f0;
+            }
+        }).process(new KeyedProcessFunction<Integer, Tuple4<Integer, Integer[], Long, Long>, String>() {
+            @Override
+            public void processElement(Tuple4<Integer, Integer[], Long, Long> integerLongLongTuple4, Context context, Collector<String> collector) throws Exception {
+                System.out.println(integerLongLongTuple4);
+                long before = context.timerService().currentProcessingTime();
+                collector.collect("In partition "+integerLongLongTuple4.f0+" we got results: "+
+                        alg.doAlgorithm(null, QS, integerLongLongTuple4.f0, integerLongLongTuple4.f1,
+                        integerLongLongTuple4.f2, integerLongLongTuple4.f3));
+                long after = context.timerService().currentProcessingTime();
+                collector.collect("This took "+(after-before)+" ms");
+            }
+        });
+    }
+
+    public QueryState getQS() {
+        return QS;
+    }
+
 
     public void overWriteQS(JobID jobID) throws UnknownHostException {
         QS.initialize(jobID);
     }
 
-    public DataStream<Tuple4<Integer, Integer[], Long, Long>> getDecoupledOutput() throws Exception {
+    public SingleOutputStreamOperator<Tuple4<Integer, Integer[], Long, Long>> getDecoupledOutput() {
         if(this.decoupledOutput == null) {
-            throw new Exception("We have only algorithm output, no decoupled one. Set algorithm = null for " +
+            throw new Error("We have only algorithm output, no decoupled one. Set algorithm = null for " +
                     "decoupled output.");
         } else {
             return this.decoupledOutput;
         }
     }
 
-    public DataStream<String> getAlgorithmOutput() throws Exception {
+    public DataStream<String> getAlgorithmOutput() {
         if(this.algorithmOutput == null) {
-            throw new Exception("We have only decoupled output, no algorithm one. Set algorithm != null for " +
+            throw new Error("We have only decoupled output, no algorithm one. Set algorithm != null for " +
                     "algorithm output.");
         } else {
             return this.algorithmOutput;
@@ -138,6 +171,7 @@ public class GraphState implements Serializable {
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, HashMap<GradoopId, List<Tuple2<GradoopId, TemporalEdge>>>> sortedEdgeList;
         private transient ValueState<Long> nextOutputTimestamp;
+        private static final LinkedList<Long> timestamps = new LinkedList<>();
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -171,13 +205,18 @@ public class GraphState implements Serializable {
 
             if(lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
-                if(!lazyPurging) {
+                if(!lazyPurging && slide != null) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
                 }
             }
 
-            if(nextOutputTimestamp.value() == null) {
+            if(nextOutputTimestamp.value() == null && slide != null) {
                 nextOutputTimestamp.update(firstTimestamp + slide);
+                context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+            } else if (nextOutputTimestamp.value()== null && slide == null) {
+                nextOutputTimestamp.update(firstTimestamp + 10000L);
                 context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
             }
 
@@ -188,8 +227,10 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
-                if(!lazyPurging) {
+                if(!lazyPurging && slide != null) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
                 }
             }
 
@@ -213,21 +254,64 @@ public class GraphState implements Serializable {
                 sortedEdgeList.get(validTo).put(source, toPut);
             }
             edgeCountSinceTimestamp.update(edgeCountSinceTimestamp.value()+1);
+            
         }
 
         @Override
         public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple4<Integer, Integer[], Long, Long>> out) throws Exception {
-            if(lazyPurging) {
-//TODO test & implement lazy purging
-            } else {
-                sortedEdgeList.remove(timestamp);
+            if(slide!= null) {
+                if(lazyPurging) {
+                    boolean keepRemoving = true;
+                    while(keepRemoving) {
+                        long timestamp1;
+                        try {
+                            timestamp1 = timestamps.peek();
+                        } catch (NullPointerException e) {
+                            break;
+                        }
+                        if((timestamp1 + windowSize) <= timestamp) {
+                            sortedEdgeList.remove(timestamp1);
+                            timestamps.poll();
+                        } else {
+                            keepRemoving = false;
+                        }
+                    }
+                } else {
+                    sortedEdgeList.remove(timestamp);
+                }
             }
+
             if (timestamp == nextOutputTimestamp.value()) {
-                System.out.println("We are now triggering output");
-                nextOutputTimestamp.update(timestamp + slide);
-                ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
+                edgeCountSinceTimestamp.update(0);
+                long newtimestamp = timestamp;
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
+                if(!lazyPurging && slide != null) {
+                    ctx.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
+                }
+                if(slide != null) {
+                    System.out.println("We are now triggering output");
+                    nextOutputTimestamp.update(timestamp + slide);
+                    ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
+                    out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
+                } else {
+                    if(timestamps.peekLast() < (timestamp-10000L)) {
+                        out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
+                    } else {
+                        nextOutputTimestamp.update(timestamp+10000L);
+                        ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+                    }
+                }
             }
+        }
+
+        @Override
+        public void close() throws Exception {
+            super.close();
         }
     }
 
@@ -238,6 +322,7 @@ public class GraphState implements Serializable {
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, HashMap<GradoopId, List<Tuple2<GradoopId, TemporalEdge>>>> sortedEdgeList;
         private transient ValueState<Long> nextOutputTimestamp;
+        private static final LinkedList<Long> timestamps = new LinkedList<>();
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -264,17 +349,16 @@ public class GraphState implements Serializable {
 
         @Override
         public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
-            if (edgeCountSinceTimestamp.value() == null) {
-                edgeCountSinceTimestamp.update(0);
-            }
             if (lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
-                if(!lazyPurging) {
-                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
-                }
+                collector.collect("Started building state at "+firstTimestamp);
+                edgeCountSinceTimestamp.update(0);
             }
-            if (nextOutputTimestamp.value() == null) {
+            if(nextOutputTimestamp.value() == null && slide != null) {
                 nextOutputTimestamp.update(firstTimestamp + slide);
+                context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+            } else if (nextOutputTimestamp.value()== null && slide == null) {
+                nextOutputTimestamp.update(firstTimestamp + 10000L);
                 context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
             }
             if (edgeCountSinceTimestamp.value() == batchSize) {
@@ -284,9 +368,6 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
-                if(!lazyPurging) {
-                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
-                }
             }
 
             long currentTime = lastTimestamp.value();
@@ -294,6 +375,11 @@ public class GraphState implements Serializable {
 
             if (edgeCountSinceTimestamp.value() == 0) {
                 sortedEdgeList.put(validTo, new HashMap<>());
+                if(!lazyPurging && slide != null) {
+                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
+                }
             }
 
             GradoopId source = edge.getSourceId();
@@ -313,17 +399,56 @@ public class GraphState implements Serializable {
 
         @Override
         public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
-            if(lazyPurging) {
-
-            } else {
-                sortedEdgeList.remove(timestamp);
+            if(slide != null) {
+                if (lazyPurging) {
+                    boolean keepRemoving = true;
+                    while (keepRemoving) {
+                        long timestamp1;
+                        try {
+                            timestamp1 = timestamps.peek();
+                        } catch (NullPointerException e) {
+                            break;
+                        }
+                        if ((timestamp1 + windowSize) <= timestamp) {
+                            sortedEdgeList.remove(timestamp1);
+                            timestamps.poll();
+                        } else {
+                            keepRemoving = false;
+                        }
+                    }
+                } else {
+                    sortedEdgeList.remove(timestamp);
+                }
             }
+
             if (timestamp == nextOutputTimestamp.value()) {
-                System.out.println("We are now triggering output");
-                nextOutputTimestamp.update(timestamp + slide);
-                ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                out.collect("Result at " + timestamp + " : " + algorithm.doAlgorithm(sortedEdgeList, QS,
-                        ctx.getCurrentKey(), keys, timestamp,timestamp+windowSize));
+                edgeCountSinceTimestamp.update(0);
+                long newtimestamp = timestamp;
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
+                if(slide != null) {
+                    System.out.println("We are now triggering output");
+                    nextOutputTimestamp.update(timestamp + slide);
+                    ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
+                    long current = ctx.timerService().currentProcessingTime();
+                    out.collect("We started the onTimer "+(current-timestamp)+ " ms too late. If this is big, consider " +
+                            "increasing slide, decreasing input rate or using a faster algorithm");
+                    out.collect("Result at " + timestamp + " : " + algorithm.doAlgorithm(sortedEdgeList, QS,
+                            ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
+                    out.collect("This took " + (ctx.timerService().currentProcessingTime() - current) + " ms");
+                } else {
+                    if(timestamps.peekLast() < (timestamp-10000L)) {
+                        out.collect("Last batch started at "+timestamps.peekLast());
+                        out.collect("Result at " + timestamp + " : " + algorithm.doAlgorithm(sortedEdgeList, QS,
+                                ctx.getCurrentKey(), keys, 0, Long.MAX_VALUE));
+                        out.collect("This took " + (ctx.timerService().currentProcessingTime() - timestamp) + " ms");
+                    } else {
+                        nextOutputTimestamp.update(timestamp+10000L);
+                        ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+                    }
+                }
             }
         }
     }
@@ -335,6 +460,7 @@ public class GraphState implements Serializable {
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, List<Tuple3<GradoopId, GradoopId, TemporalEdge>>> edgeList;
         private transient ValueState<Long> nextOutputTimestamp;
+        private static final LinkedList<Long> timestamps = new LinkedList<>();
 
 
         @Override
@@ -361,20 +487,18 @@ public class GraphState implements Serializable {
 
         @Override
         public void processElement(TemporalEdge edge, Context context, Collector<Tuple4<Integer, Integer[], Long, Long>> collector) throws Exception {
-            if(edgeCountSinceTimestamp.value() == null) {
-                edgeCountSinceTimestamp.update(0);
-            }
 
-            if (nextOutputTimestamp.value() == null) {
+            if(nextOutputTimestamp.value() == null && slide != null) {
                 nextOutputTimestamp.update(firstTimestamp + slide);
+                context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+            } else if (nextOutputTimestamp.value()== null && slide == null) {
+                nextOutputTimestamp.update(firstTimestamp + 10000L);
                 context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
             }
 
             if(lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
-                if(!lazyPurging) {
-                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
-                }
+                edgeCountSinceTimestamp.update(0);
             }
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
@@ -384,9 +508,6 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
-                if(!lazyPurging) {
-                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
-                }
             }
 
             long currentTime = lastTimestamp.value();
@@ -396,6 +517,11 @@ public class GraphState implements Serializable {
                 List<Tuple3<GradoopId, GradoopId, TemporalEdge>> list =
                         Collections.synchronizedList(new LinkedList<>());
                 edgeList.put(validTo, list);
+                if(!lazyPurging && slide != null) {
+                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
+                }
             }
 
             GradoopId source = edge.getSourceId();
@@ -409,16 +535,48 @@ public class GraphState implements Serializable {
 
         @Override
         public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple4<Integer, Integer[], Long, Long>> out) throws Exception {
-            if(lazyPurging) {
-
-            } else {
-                edgeList.remove(timestamp);
+            if(slide!= null) {
+                if(lazyPurging) {
+                    boolean keepRemoving = true;
+                    while(keepRemoving) {
+                        long timestamp1;
+                        try {
+                            timestamp1 = timestamps.peek();
+                        } catch (NullPointerException e) {
+                            break;
+                        }
+                        if((timestamp1 + windowSize) <= timestamp) {
+                            edgeList.remove(timestamp1);
+                            timestamps.poll();
+                        } else {
+                            keepRemoving = false;
+                        }
+                    }
+                }else {
+                    edgeList.remove(timestamp);
+                }
             }
+
             if (timestamp == nextOutputTimestamp.value()) {
-                System.out.println("We are now triggering output");
-                nextOutputTimestamp.update(timestamp + slide);
-                ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp+windowSize));
+                edgeCountSinceTimestamp.update(0);
+                long newtimestamp = timestamp;
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
+                if(slide != null) {
+                    System.out.println("We are now triggering output");
+                    nextOutputTimestamp.update(timestamp + slide);
+                    ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
+                    out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp + windowSize));
+                } else {
+                    if(timestamps.peekLast() < (timestamp-10000L)) {
+                        out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, 0L, Long.MAX_VALUE));
+                    } else {
+                        nextOutputTimestamp.update(timestamp+10000L);
+                        ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+                    }
+                }
             }
         }
     }
@@ -430,6 +588,7 @@ public class GraphState implements Serializable {
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, List<Tuple3<GradoopId, GradoopId, TemporalEdge>>> edgeList;
         private transient ValueState<Long> nextOutputTimestamp;
+        private static final LinkedList<Long> timestamps = new LinkedList<>();
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -460,12 +619,19 @@ public class GraphState implements Serializable {
             }
             if(lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
-                if(!lazyPurging) {
+                collector.collect("Started building state at "+firstTimestamp);
+                if(!lazyPurging && slide != null) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
                 }
             }
-            if(nextOutputTimestamp.value() == null) {
-                nextOutputTimestamp.update( firstTimestamp + slide);
+
+            if(nextOutputTimestamp.value() == null && slide != null) {
+                nextOutputTimestamp.update(firstTimestamp + slide);
+                context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+            } else if (nextOutputTimestamp.value()== null && slide == null) {
+                nextOutputTimestamp.update(firstTimestamp + 10000L);
                 context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
             }
 
@@ -476,8 +642,10 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
-                if(!lazyPurging) {
+                if(!lazyPurging && slide != null) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
                 }
             }
 
@@ -501,18 +669,62 @@ public class GraphState implements Serializable {
 
         @Override
         public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
-            if(lazyPurging) {
-
-            } else {
-                edgeList.remove(timestamp);
+            if(slide!= null) {
+                if(lazyPurging) {
+                    boolean keepRemoving = true;
+                    while(keepRemoving) {
+                        long timestamp1;
+                        try {
+                            timestamp1 = timestamps.peek();
+                        } catch (NullPointerException e) {
+                            break;
+                        }
+                        if((timestamp1 + windowSize) <= timestamp) {
+                            edgeList.remove(timestamp1);
+                            timestamps.poll();
+                        } else {
+                            keepRemoving = false;
+                        }
+                    }
+                }else {
+                    edgeList.remove(timestamp);
+                }
             }
+
             if (timestamp == nextOutputTimestamp.value()) {
-                System.out.println("We are now triggering output");
-                nextOutputTimestamp.update(timestamp + slide);
-                ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                out.collect("Result at time " + timestamp + " : " +
-                        algorithm.doAlgorithm(edgeList, QS, ctx.getCurrentKey(), keys,
-                                timestamp, timestamp+windowSize));
+                edgeCountSinceTimestamp.update(0);
+                long newtimestamp = timestamp;
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
+                if(!lazyPurging && slide != null) {
+                    ctx.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
+                }
+                if(slide != null) {
+                    System.out.println("We are now triggering output");
+                    nextOutputTimestamp.update(timestamp + slide);
+                    long current = ctx.timerService().currentProcessingTime();
+                    out.collect("We started the onTimer "+(current-timestamp)+ " ms too late. If this is big, consider " +
+                            "increasing slide, decreasing input rate or using a faster algorithm");
+                    out.collect("Result at time " + timestamp + " : " +
+                            algorithm.doAlgorithm(edgeList, QS, ctx.getCurrentKey(), keys,
+                                    timestamp, timestamp + windowSize));
+                    out.collect("This took " + (ctx.timerService().currentProcessingTime() - current) + " ms");
+                } else {
+                    if(timestamps.peekLast() < (timestamp-10000L)) {
+                        out.collect("Last batch started at "+timestamps.peekLast());
+                        out.collect("Result at time " + timestamp + " : " +
+                                algorithm.doAlgorithm(edgeList, QS, ctx.getCurrentKey(), keys,
+                                        0, Long.MAX_VALUE));
+                        out.collect("This took " + (ctx.timerService().currentProcessingTime() - timestamp) + " ms");
+                    } else {
+                        nextOutputTimestamp.update(timestamp+10000L);
+                        ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+                    }
+                }
             }
         }
     }
@@ -524,6 +736,7 @@ public class GraphState implements Serializable {
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> adjacencyList;
         private transient ValueState<Long> nextOutputTimestamp;
+        private static final LinkedList<Long> timestamps = new LinkedList<>();
 
 
         @Override
@@ -546,24 +759,23 @@ public class GraphState implements Serializable {
             ValueStateDescriptor<Long> descriptor4 = new ValueStateDescriptor<Long>(
                     "nextOutputTimestamp", Long.class);
             nextOutputTimestamp = getRuntimeContext().getState(descriptor4);
+
         }
 
         @Override
         public void processElement(TemporalEdge edge, Context context, Collector<Tuple4<Integer, Integer[], Long, Long>> collector) throws Exception {
-            if(edgeCountSinceTimestamp.value() == null) {
-                edgeCountSinceTimestamp.update(0);
-            }
 
-            if(nextOutputTimestamp.value() == null) {
+            if(nextOutputTimestamp.value() == null && slide != null) {
                 nextOutputTimestamp.update(firstTimestamp + slide);
+                context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+            } else if (nextOutputTimestamp.value()== null && slide == null) {
+                nextOutputTimestamp.update(firstTimestamp + 10000L);
                 context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
             }
 
             if(lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
-                if(!lazyPurging) {
-                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
-                }
+                edgeCountSinceTimestamp.update(0);
             }
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
@@ -573,9 +785,6 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
-                if(!lazyPurging) {
-                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value()+windowSize);
-                }
             }
 
             long currentTime = lastTimestamp.value();
@@ -583,6 +792,11 @@ public class GraphState implements Serializable {
 
             if(edgeCountSinceTimestamp.value() == 0) {
                 adjacencyList.put(validTo, new HashMap<>());
+                if(!lazyPurging && slide != null) {
+                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
+                }
             }
 
             GradoopId source = edge.getSourceId();
@@ -601,16 +815,48 @@ public class GraphState implements Serializable {
 
         @Override
         public void onTimer(long timestamp, OnTimerContext ctx, Collector<Tuple4<Integer, Integer[], Long, Long>> out) throws Exception {
-            if(lazyPurging) {
-
-            } else {
-                adjacencyList.remove(timestamp);
+            if(slide != null) {
+                if (lazyPurging) {
+                    boolean keepRemoving = true;
+                    while (keepRemoving) {
+                        long timestamp1;
+                        try {
+                            timestamp1 = timestamps.peek();
+                        } catch (NullPointerException e) {
+                            break;
+                        }
+                        if ((timestamp1 + windowSize) <= timestamp) {
+                            adjacencyList.remove(timestamp1);
+                            timestamps.poll();
+                        } else {
+                            keepRemoving = false;
+                        }
+                    }
+                } else {
+                    adjacencyList.remove(timestamp);
+                }
             }
+
             if(timestamp == nextOutputTimestamp.value()) {
-                System.out.println("We are now triggering output");
-                nextOutputTimestamp.update(timestamp + slide);
-                ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp+windowSize));
+                edgeCountSinceTimestamp.update(0);
+                long newtimestamp = timestamp;
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
+                if(slide != null) {
+                    System.out.println("We are now triggering output");
+                    nextOutputTimestamp.update(timestamp + slide);
+                    ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
+                    out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp + windowSize));
+                } else {
+                    if(timestamps.peekLast() < (timestamp-10000L)) {
+                        out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, 0L, Long.MAX_VALUE));
+                    } else {
+                        nextOutputTimestamp.update(timestamp+10000L);
+                        ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+                    }
+                }
             }
         }
     }
@@ -622,7 +868,7 @@ public class GraphState implements Serializable {
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> adjacencyList;
         private transient ValueState<Long> nextOutputTimestamp;
-        private static LinkedList<Long> timestamps = new LinkedList<>();
+        private static final LinkedList<Long> timestamps = new LinkedList<>();
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -652,18 +898,19 @@ public class GraphState implements Serializable {
                 edgeCountSinceTimestamp.update(0);
             }
 
-            if(nextOutputTimestamp.value() == null) {
+            if(nextOutputTimestamp.value() == null && slide != null) {
                 nextOutputTimestamp.update(firstTimestamp + slide);
+                context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+            } else if (nextOutputTimestamp.value()== null && slide == null) {
+                nextOutputTimestamp.update(firstTimestamp + 10000L);
                 context.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
             }
 
             if(lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
-                if(!lazyPurging) {
-                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
-                } else {
-                    timestamps.add(lastTimestamp.value());
-                }
+                collector.collect("Started building state at "+firstTimestamp);
+                myLogWriter.appendLine("First element while building state in partition "+context.getCurrentKey()+
+                        " at "+context.timerService().currentProcessingTime());
             }
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
@@ -673,11 +920,6 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
-                if(!lazyPurging) {
-                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value()+windowSize);
-                } else {
-                    timestamps.add(lastTimestamp.value());
-                }
             }
 
             long currentTime = lastTimestamp.value();
@@ -685,6 +927,11 @@ public class GraphState implements Serializable {
 
             if(edgeCountSinceTimestamp.value() == 0) {
                 adjacencyList.put(validTo, new HashMap<>());
+                if(!lazyPurging && slide != null) {
+                    context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
+                } else {
+                    timestamps.add(lastTimestamp.value());
+                }
             }
 
             GradoopId source = edge.getSourceId();
@@ -699,38 +946,65 @@ public class GraphState implements Serializable {
                 adjacencyList.get(validTo).put(source, toPut);
             }
             edgeCountSinceTimestamp.update(edgeCountSinceTimestamp.value()+1);
+            globalCounter.getAndIncrement();
         }
 
         @Override
         public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
-            if(lazyPurging) {
-                boolean keepRemoving = true;
-                while(keepRemoving) {
-                    long timestamp1;
-                    try {
-                        timestamp1 = timestamps.peek();
-                    } catch (NullPointerException e) {
-                        break;
+            if(slide != null) {
+                if (lazyPurging) {
+                    boolean keepRemoving = true;
+                    while (keepRemoving) {
+                        long timestamp1;
+                        try {
+                            timestamp1 = timestamps.peek();
+                        } catch (NullPointerException e) {
+                            break;
+                        }
+                        if ((timestamp1 + windowSize) <= timestamp) {
+                            adjacencyList.remove(timestamp1);
+                            timestamps.poll();
+                        } else {
+                            keepRemoving = false;
+                        }
                     }
-                    if((timestamp1 + windowSize) <= timestamp) {
-                        adjacencyList.remove(timestamp1);
-                        timestamps.poll();
-                    } else {
-                        keepRemoving = false;
-                    }
+                } else {
+                    adjacencyList.remove(timestamp);
                 }
-            }else {
-                adjacencyList.remove(timestamp);
             }
 
             if(timestamp == nextOutputTimestamp.value()) {
-                System.out.println("We are now triggering output");
-                nextOutputTimestamp.update(timestamp + slide);
-                ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                out.collect("Result at time '"+ timestamp + " : "+
-                        algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
-                                timestamp, timestamp+windowSize));
-                System.out.println("This took "+(ctx.timerService().currentProcessingTime()-timestamp)+" ms");
+                edgeCountSinceTimestamp.update(0);
+                long newtimestamp = timestamp;
+                if(newtimestamp == lastTimestamp.value()) {
+                    newtimestamp++;
+                }
+                lastTimestamp.update(newtimestamp);
+
+                if(slide != null) {
+                    nextOutputTimestamp.update(timestamp + slide);
+                    ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
+                    long current = ctx.timerService().currentProcessingTime();
+                    out.collect("We started the onTimer "+(current-timestamp)+ " ms too late. If this is big, consider " +
+                            "increasing slide, decreasing input rate or using a faster algorithm.");
+                    out.collect("Result at time '" + timestamp + " : " +
+                            algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
+                                    timestamp, timestamp + windowSize));
+                    out.collect("This took " + (ctx.timerService().currentProcessingTime() - current) + " ms");
+
+                } else {
+                    if(timestamps.peekLast() < (timestamp-10000L)) {
+                        out.collect("Last batch started at "+timestamps.peekLast());
+                        myLogWriter.appendLine("Last batch in "+ctx.getCurrentKey()+" started at "+timestamps.peekLast());
+                        out.collect("Result at time '" + timestamp + " : " +
+                                algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
+                                        0, Long.MAX_VALUE));
+                        out.collect("This took " + (ctx.timerService().currentProcessingTime() - timestamp) + " ms");
+                    } else {
+                        nextOutputTimestamp.update(timestamp+10000L);
+                        ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+                    }
+                }
             }
         }
     }
