@@ -49,6 +49,7 @@ public class GraphState implements Serializable {
     private static Algorithm algorithm;
     private static long firstTimestamp;
     public static AtomicLong globalCounter = new AtomicLong(0);
+    public static JobID jobID;
 
 
     public GraphState(QueryState QS,
@@ -143,6 +144,7 @@ public class GraphState implements Serializable {
 
     public void overWriteQS(JobID jobID) throws UnknownHostException {
         QS.initialize(jobID);
+        this.jobID = jobID;
     }
 
     public SingleOutputStreamOperator<Tuple4<Integer, Integer[], Long, Long>> getDecoupledOutput() {
@@ -909,8 +911,8 @@ public class GraphState implements Serializable {
             if(lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
                 collector.collect("Started building state at "+firstTimestamp);
-                myLogWriter.appendLine("First element while building state in partition "+context.getCurrentKey()+
-                        " at "+context.timerService().currentProcessingTime());
+                //myLogWriter.appendLine("First element while building state in partition "+context.getCurrentKey()+
+                //        " at "+context.timerService().currentProcessingTime());
             }
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
@@ -987,17 +989,21 @@ public class GraphState implements Serializable {
                     long current = ctx.timerService().currentProcessingTime();
                     out.collect("We started the onTimer "+(current-timestamp)+ " ms too late. If this is big, consider " +
                             "increasing slide, decreasing input rate or using a faster algorithm.");
+                    QueryState QS2 = new QueryState();
+                    QS2.initialize(jobID);
                     out.collect("Result at time '" + timestamp + " : " +
-                            algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
+                            algorithm.doAlgorithm(adjacencyList, QS2, ctx.getCurrentKey(), keys,
                                     timestamp, timestamp + windowSize));
                     out.collect("This took " + (ctx.timerService().currentProcessingTime() - current) + " ms");
 
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
                         out.collect("Last batch started at "+timestamps.peekLast());
-                        myLogWriter.appendLine("Last batch in "+ctx.getCurrentKey()+" started at "+timestamps.peekLast());
+                        //myLogWriter.appendLine("Last batch in "+ctx.getCurrentKey()+" started at "+timestamps.peekLast());
+                        QueryState QS2 = new QueryState();
+                        QS2.initialize(jobID);
                         out.collect("Result at time '" + timestamp + " : " +
-                                algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
+                                algorithm.doAlgorithm(adjacencyList, QS2, ctx.getCurrentKey(), keys,
                                         0, Long.MAX_VALUE));
                         out.collect("This took " + (ctx.timerService().currentProcessingTime() - timestamp) + " ms");
                     } else {

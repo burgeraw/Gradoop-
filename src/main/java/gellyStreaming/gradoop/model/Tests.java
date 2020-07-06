@@ -300,10 +300,10 @@ public class Tests {
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
-        SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/Cit-HepPh",
-                34546,421578); //1.276.868 triangles
-        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
-        //        1005, 25571); //105.461 triangles
+        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/Cit-HepPh",
+        //        34546,421578); //1.276.868 triangles
+        SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
+                1005, 25571); //105.461 triangles
         //SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
         //"src/main/resources/ER-20");
         //        "src/main/resources/Cit-HepPh.txt");
@@ -311,14 +311,15 @@ public class Tests {
         //tempEdges = tempEdges.undirected();
         env.setParallelism(numberOfPartitions);
         QueryState QS = new QueryState();
-        GraphState GS = tempEdges.buildState(QS, "AL", 20000L, 10000L,
+        GraphState GS = tempEdges.buildState(QS, "AL", 20000L, null,
                 numberOfPartitions, true, 100000,
                 //new TriangleCountingFennelALRetrieveVertex(fennel, 10000000, true));
                 //new TriangleCountingALRetrieveAllState());
-                new TriangleCountingFennelALRetrieveVertex(fennel, 1000000000, false));
+                //new TriangleCountingFennelALRetrieveVertex(fennel, 1000000000, false));
                 //null);
                 //new DistinctVertexCounterFennelAL(fennel));
                 //new TotalSizeALState());
+                new EstimateTrianglesFennelAL(fennel, 1, true, 30000L));
         GS.getAlgorithmOutput().print();
         //GS.getDecoupledOutput().print();
         try {
@@ -389,8 +390,8 @@ public class Tests {
         //testBuildingState();
         //makeAL();
         //testVertexPartitioner();
-        //vertexBasedTriangleCounting();
-        testDecoupled();
+        vertexBasedTriangleCounting();
+        //testDecoupled();
         //GradoopIdTests();
         //Thread.sleep(100000);
         //Runtime rt2 = Runtime.getRuntime();
