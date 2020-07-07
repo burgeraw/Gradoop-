@@ -35,23 +35,38 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
             if (!QS.isInitilized()) {
                 throw new Exception("We don't have Queryable State initialized.");
             }
+
             ConcurrentHashMap<Integer, ConcurrentHashMap<GradoopId, LinkedList<GradoopId>>> QSqueue = new ConcurrentHashMap<>();
             ConcurrentHashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> cache = new ConcurrentHashMap<>();
             AtomicInteger QSqueueSize = new AtomicInteger(0);
 
             HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
-            for(long timestamp: localState.keys()) {
-                if(timestamp >= from && timestamp <= maxValidTo) {
-                    for (GradoopId src : localState.get(timestamp).keySet()) {
-                        if (!localAdjacencyList.containsKey(src)) {
-                            localAdjacencyList.put(src, new HashMap<>());
-                        }
-                        localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
+
+            int tries1 = 0;
+            while(localState==null && tries1 < 10) {
+                try {
+                    localState = QS.getALState(localKey);
+                } catch (Exception e) {
+                    tries1++;
+                    if(tries1==10) {
+                        System.out.println("Error retrieving state. " + e);
                     }
                 }
             }
-            AtomicInteger triangleCount = new AtomicInteger(0);
-            for (GradoopId srcId : localAdjacencyList.keySet()) {
+
+        assert localState != null;
+        for(long timestamp: localState.keys()) {
+            if(timestamp >= from && timestamp <= maxValidTo) {
+                for (GradoopId src : localState.get(timestamp).keySet()) {
+                    if (!localAdjacencyList.containsKey(src)) {
+                        localAdjacencyList.put(src, new HashMap<>());
+                    }
+                    localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
+                }
+            }
+        }
+        AtomicInteger triangleCount = new AtomicInteger(0);
+        for (GradoopId srcId : localAdjacencyList.keySet()) {
                 Set<GradoopId> neighboursSet = localAdjacencyList.get(srcId).keySet();
                 GradoopId[] neighbours = neighboursSet.toArray(GradoopId[]::new);
                 for (int i = 0; i < neighbours.length; i++) {

@@ -294,16 +294,16 @@ public class Tests {
     }
 
     public static void vertexBasedTriangleCounting() throws IOException, InterruptedException {
-        int numberOfPartitions = 1;
+        int numberOfPartitions = 2;
         Configuration config = new Configuration();
         config.set(DeploymentOptions.ATTACHED, false);
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
-        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/Cit-HepPh",
-        //        34546,421578); //1.276.868 triangles
-        SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
-                1005, 25571); //105.461 triangles
+        SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/Cit-HepPh",
+                34546,421578); //1.276.868 triangles
+        //SimpleTemporalEdgeStream tempEdges = makeEdgesTemporal(env, numberOfPartitions, "resources/AL/email-Eu-core",
+        //        1005, 50000);//25571); //105.461 triangles, estimation finds 118/119.000
         //SimpleTemporalEdgeStream tempEdges = getSimpleTemporalMovieEdgesStream2(env, numberOfPartitions,
         //"src/main/resources/ER-20");
         //        "src/main/resources/Cit-HepPh.txt");
@@ -319,7 +319,7 @@ public class Tests {
                 //null);
                 //new DistinctVertexCounterFennelAL(fennel));
                 //new TotalSizeALState());
-                new EstimateTrianglesFennelAL(fennel, 1, true, 30000L));
+                new EstimateTrianglesFennelAL(fennel, 1000, true, 300000L));
         GS.getAlgorithmOutput().print();
         //GS.getDecoupledOutput().print();
         try {

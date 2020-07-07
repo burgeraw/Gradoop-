@@ -1,228 +1,216 @@
 package gellyStreaming.gradoop.algorithms;
 
+import com.google.common.util.concurrent.AtomicDouble;
 import gellyStreaming.gradoop.model.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.partitioner.FennelPartitioning;
-import it.unimi.dsi.fastutil.Hash;
 import org.apache.flink.api.common.state.MapState;
-import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
+
+import static java.lang.Double.NaN;
 
 public class EstimateTrianglesFennelAL implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
 
+    // Granularity of retrieval: getting the vertexID & all its neighbours from remote partition.
     private final FennelPartitioning fennel;
     private final int QSbatchsize;
-    private boolean cont;
     private final boolean caching;
     private final long timeToRun;
 
-    public EstimateTrianglesFennelAL(FennelPartitioning fennel, Integer QSbatchsize, boolean caching, long timeToRun) {
+    public EstimateTrianglesFennelAL(FennelPartitioning fennel, int QSbatchsize, boolean caching, long timeToRun) {
         this.fennel = fennel;
-        if(fennel==null) {
+        if (fennel == null) {
+            System.out.println("Fennel vertex partitioning hasn't been instantiated.");
             throw new InstantiationError("Fennel vertex partitioning hasn't been instantiated.");
         }
         this.QSbatchsize = QSbatchsize;
-        this.timeToRun = timeToRun;
         this.caching = caching;
+        this.timeToRun = timeToRun;
     }
 
     @Override
-    public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState, QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws Exception {
+    public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState,
+                              QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo)
+            throws Exception {
         if (!QS.isInitilized()) {
-            System.out.println("No QS");
             throw new Exception("We don't have Queryable State initialized.");
         }
-        //this.cont = true;
-        //Timer timer = new Timer();
-        //timer.schedule(new stopAlgorithm(), timeToRun);
-        long runUntil = System.currentTimeMillis() + timeToRun;
-        ConcurrentHashMap<Integer, ConcurrentHashMap<GradoopId, LinkedList<GradoopId>>> QSqueue = new ConcurrentHashMap<>();
-        ConcurrentHashMap<GradoopId, HashSet<GradoopId>> cache = new ConcurrentHashMap<>();
+        HashMap<Integer, HashMap<GradoopId, LinkedList<GradoopId>>> QSqueue = new HashMap<>();
+        HashMap<GradoopId, HashSet<GradoopId>> cache = new HashMap<>();
         AtomicInteger QSqueueSize = new AtomicInteger(0);
-        long lambdas = 0L;
-        int noLambdas = 0;
 
-        HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
         int tries1 = 0;
-        while(localState==null && tries1 < 10) {
+        while (localState == null && tries1 < 10) {
+            System.out.println("localstate = null");
             try {
                 localState = QS.getALState(localKey);
             } catch (Exception e) {
                 tries1++;
-                if(tries1==10) {
+                if (tries1 == 10) {
                     System.out.println("Error retrieving state. " + e);
                 }
             }
         }
-        //assert localState != null;
-        for(long timestamp: localState.keys()) {
-            if(timestamp >= from && timestamp <= maxValidTo) {
+        if (localState == null) {
+            System.out.println("no state");
+            throw new ExceptionInInitializerError("We couldnt retrieve state.");
+        }
+
+        HashMap<GradoopId, HashSet<GradoopId>> localAdjacencyList = new HashMap<>();
+
+        for (long timestamp : localState.keys()) {
+            if (timestamp >= from && timestamp <= maxValidTo) {
                 for (GradoopId src : localState.get(timestamp).keySet()) {
                     if (!localAdjacencyList.containsKey(src)) {
-                        localAdjacencyList.put(src, new HashMap<>());
+                        localAdjacencyList.put(src, new HashSet<>());
                     }
-                    localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
+                    if (localState.get(timestamp).get(src).keySet().size() < 1) {
+                        System.out.println(localState.get(timestamp).get(src).keySet().toString());
+                        System.out.println("src:" + src);
+                    }
+
+                    localAdjacencyList.get(src).addAll(localState.get(timestamp).get(src).keySet());
+                    if (src.toString().equals("000000000001370000000000")) {
+                        //System.out.println(localState.get(timestamp).get(src).keySet().toString());
+                        //System.out.println(localAdjacencyList.get(src).toString());
+                    }
+                    if (localAdjacencyList.get(src).size() < 1) {
+                        System.out.println("less than 1 for: " + src);
+                    }
                 }
             }
         }
+
+
+        AtomicInteger lambdasCount = new AtomicInteger(0);
+        AtomicDouble lambdas = new AtomicDouble(0);
+
         GradoopId[] vertexIds = localAdjacencyList.keySet().toArray(GradoopId[]::new);
-        HashSet<GradoopId> allVertexIds = new HashSet<>(Arrays.asList(vertexIds));
         int numberLocalVertices = vertexIds.length;
+
+        long runUntil = System.currentTimeMillis() + timeToRun;
+
         Random random = new Random();
-        //fennel.getState().record_map.size();
-        int counterRepeats = 0;
-        while(counterRepeats < 10) {
-            counterRepeats++;
-            if(counterRepeats >= 10) {
-                if (System.currentTimeMillis() > runUntil) {
-                    break;
-                }
-                counterRepeats = 0;
+
+
+        while (System.currentTimeMillis() < runUntil && numberLocalVertices!=0) {
+            GradoopId id1 = vertexIds[random.nextInt(numberLocalVertices)];
+
+            //System.out.println(id1);
+
+            if (localAdjacencyList.get(id1).isEmpty()) {
+                System.out.println(id1 + " returns empty");
+                break;
             }
-            GradoopId vertexId1 = vertexIds[random.nextInt(numberLocalVertices)];
-            List<GradoopId> neighboursVertex1 = new ArrayList<>(localAdjacencyList.get(vertexId1).keySet());
-            GradoopId vertexId2 = neighboursVertex1.get(random.nextInt(neighboursVertex1.size()));
-            allVertexIds.addAll(neighboursVertex1);
-            if(localAdjacencyList.containsKey(vertexId2)) {
-                Set<GradoopId> neighboursVertex2 = localAdjacencyList.get(vertexId2).keySet();
-                int degreeVertex2 = neighboursVertex2.size();
-                neighboursVertex2.retainAll(neighboursVertex1);
-                int degreeVertex1 = neighboursVertex1.size();
-                long lambda = neighboursVertex2.size() * (degreeVertex1 * degreeVertex2) / (3*(degreeVertex1+degreeVertex2));
-                lambdas = lambdas + lambda;
-                noLambdas++;
-            } else if (cache.containsKey(vertexId2)) {
-                Set<GradoopId> neighboursVertex2 = cache.get(vertexId2);
-                int degreeVertex2 = neighboursVertex2.size();
-                neighboursVertex2.retainAll(neighboursVertex1);
-                int degreeVertex1 = neighboursVertex1.size();
-                long lambda = neighboursVertex2.size() * (degreeVertex1 * degreeVertex2) / (3*(degreeVertex1+degreeVertex2));
-                lambdas = lambdas + lambda;
-                noLambdas++;
+
+            Set<GradoopId> neighboursVertex1 = localAdjacencyList.get(id1);
+            int degree1 = neighboursVertex1.size();
+
+            GradoopId id2 = neighboursVertex1.toArray(GradoopId[]::new)[random.nextInt(degree1)];
+
+            if (localAdjacencyList.containsKey(id2)) {
+                Set<GradoopId> neighboursVertex2 = localAdjacencyList.get(id2);
+                int degree2 = neighboursVertex2.size();
+                Set<GradoopId> intersection = neighboursVertex2.stream()
+                        .filter(neighboursVertex1::contains)
+                        .collect(Collectors.toSet());
+                double lambda = (intersection.size() * (degree1 * degree2)) / (3. * (degree1 + degree2));
+                lambdas.getAndAdd(lambda);
+                lambdasCount.getAndIncrement();
+            } else if (cache.containsKey(id2)) {
+                Set<GradoopId> neighboursVertex2 = cache.get(id2);
+                int degree2 = neighboursVertex2.size();
+                Set<GradoopId> intersection = neighboursVertex2.stream()
+                        .filter(neighboursVertex1::contains)
+                        .collect(Collectors.toSet());
+                double lambda = (intersection.size() * (degree1 * degree2)) / (3. * (degree1 + degree2));
+                lambdas.getAndAdd(lambda);
+                lambdasCount.getAndIncrement();
             } else {
-                Iterator<Byte> byteIterator = fennel.getPartitions(GradoopIdUtil.getLong(vertexId2));
+                Iterator<Byte> byteIterator = fennel.getPartitions(GradoopIdUtil.getLong(id2));
                 List<Byte> byteList = new LinkedList<>();
                 while (byteIterator.hasNext()) {
                     byteList.add(byteIterator.next());
                 }
-                for(Byte partition : byteList) {
+                for (Byte partition : byteList) {
                     int partitionKey = allKeys[partition];
-                    if (!QSqueue.containsKey(partitionKey)) {
-                        QSqueue.put(partitionKey, new ConcurrentHashMap<>());
+                    if(partitionKey != localKey) {
+                        if (!QSqueue.containsKey(partitionKey)) {
+                            QSqueue.put(partitionKey, new HashMap<>());
+                        }
+                        if (!QSqueue.get(partitionKey).containsKey(id2)) {
+                            QSqueue.get(partitionKey).put(id2, new LinkedList<>());
+                        }
+                        QSqueue.get(partitionKey).get(id2).add(id1);
+                        QSqueueSize.getAndIncrement();
+                    } else {
+                        lambdasCount.getAndIncrement();
                     }
-                    if(!QSqueue.get(partitionKey).containsKey(vertexId2)) {
-                        QSqueue.get(partitionKey).put(vertexId2, new LinkedList<>());
-                    }
-                    QSqueue.get(partitionKey).get(vertexId2).add(vertexId1);
-                    QSqueueSize.getAndIncrement();
+                }
+            }
 
-                    if(QSqueueSize.get() >= QSbatchsize) {
-                        for (int partitionToQuery : QSqueue.keySet()) {
-                            GradoopId[] list = QSqueue.get(partitionToQuery).keySet().toArray(GradoopId[]::new);
-                            int tries = 0;
-                            while (tries < 10 && cont) {
-                                try {
-                                    HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> temp = QS.getALVerticesFromTo(
-                                            partitionToQuery, list, from, maxValidTo);
-                                    for(GradoopId beenQueried : list) {
-                                        if (caching) {
-                                            if (!cache.containsKey(beenQueried)) {
-                                                cache.put(beenQueried, new HashSet<>());
-                                            }
-                                            cache.get(beenQueried).addAll(temp.get(beenQueried).keySet());
-                                        }
-                                        for (GradoopId potentialTriangle : QSqueue.get(partitionToQuery).get(beenQueried)) {
-                                            Set<GradoopId> neighbours1 = localAdjacencyList.get(potentialTriangle).keySet();
-                                            int degreeVertex1 = neighbours1.size();
-                                            Set<GradoopId> neighbours2 = temp.get(beenQueried).keySet();
-                                            allVertexIds.addAll(neighbours2);
-                                            neighbours1.retainAll(neighbours2);
-                                            int degreeVertex2 = neighbours2.size();
-                                            long lambda = neighbours1.size() * (degreeVertex1 * degreeVertex2) / (3*(degreeVertex1+degreeVertex2));
-                                            lambdas = lambdas + lambda;
-                                            noLambdas++;
-                                        }
+            if (QSqueueSize.get() >= QSbatchsize && System.currentTimeMillis() < runUntil) {
+                for (int partition : QSqueue.keySet()) {
+                    GradoopId[] toQuery = QSqueue.get(partition).keySet().toArray(GradoopId[]::new);
+                    int tries = 0;
+                    while (tries < 10) {
+                        try {
+                            HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> retrieved =
+                                    QS.getALVerticesFromTo(partition, toQuery, from, maxValidTo);
+                            for (GradoopId id3 : toQuery) {
+                                Set<GradoopId> neighbours3 = retrieved.get(id3).keySet();
+                                if (caching) {
+                                    if (!cache.containsKey(id3)) {
+                                        cache.put(id3, new HashSet<>());
                                     }
-                                    break;
-                                } //catch (NullPointerException ignored) {}
-                                catch (Exception e) {
-                                    tries++;
-                                    //Thread.sleep(100);
-                                    if (tries == 10) {
-                                        System.out.println("ERROR, tried 10 times & failed using QS. "
-                                                +"The request was: partition: "+partitionToQuery
-                                                +" and list: "+ Arrays.toString(list) +" "
-                                                +e);
-                                    }
+                                    cache.get(id3).addAll(neighbours3);
+                                }
+                                int degree3 = neighbours3.size();
+                                for (GradoopId id4 : QSqueue.get(partition).get(id3)) {
+                                    Set<GradoopId> neighbours4 = localAdjacencyList.get(id4);
+                                    int degree4 = neighbours4.size();
+                                    Set<GradoopId> intersection = neighbours3.stream()
+                                            .filter(neighbours4::contains)
+                                            .collect(Collectors.toSet());
+                                    double lambda = (intersection.size() * (degree3 * degree4)) / (3. * (degree3 + degree4));
+                                    lambdas.getAndAdd(lambda);
+                                    lambdasCount.getAndIncrement();
                                 }
                             }
-                        }
-                        QSqueueSize.set(0);
-                        QSqueue = new ConcurrentHashMap<>();
-                    }
-                }
-            }
-        }
-        /*
-        if(QSqueueSize.get() > 0) {
-            for (int partitionToQuery : QSqueue.keySet()) {
-                GradoopId[] list = QSqueue.get(partitionToQuery).keySet().toArray(GradoopId[]::new);
-                int tries = 0;
-                while (tries < 10) {
-                    try {
-                        HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> temp = QS.getALVerticesFromTo(
-                                partitionToQuery, list, from, maxValidTo);
-                        for (GradoopId beenQueried : list) {
-                            for (GradoopId potentialTriangle : QSqueue.get(partitionToQuery).get(beenQueried)) {
-                                Set<GradoopId> neighbours1 = localAdjacencyList.get(potentialTriangle).keySet();
-                                int degreeVertex1 = neighbours1.size();
-                                Set<GradoopId> neighbours2 = temp.get(beenQueried).keySet();
-                                neighbours1.retainAll(neighbours2);
-                                int degreeVertex2 = neighbours2.size();
-                                long lambda = neighbours1.size() * (degreeVertex1 * degreeVertex2) / (3 * (degreeVertex1 + degreeVertex2));
-                                lambdas.add(lambda);
+                            break;
+                        } catch (Exception e) {
+                            tries++;
+                            if (tries >= 10) {
+                                System.out.println("Error retrieving state. " + e);
                             }
                         }
+                    }
+                    if(System.currentTimeMillis() >= runUntil) {
                         break;
-                        //} catch (NullPointerException ignored) {}
-                    }catch (Exception e) {
-                        Thread.sleep(100);
-                        tries++;
-                        if (tries == 10) {
-                            System.out.println("ERROR, tried 10 times & failed using QS. "+e);
-                        }
                     }
                 }
+                QSqueueSize.set(0);
+                QSqueue = new HashMap<>();
             }
         }
-
-         */
-        System.out.println("In "+timeToRun+"ms we sampled "+noLambdas+" times in partition "+localKey);
-        System.out.println("In partition "+localKey+" we found "+allVertexIds.size()+" 'allvertexids'");
-        int approxVertices = allVertexIds.size();
-        long result = (lambdas / noLambdas) * approxVertices;
-        String output = "In partition "+localKey+" we estimated "+result+" triangles";
+        System.out.println("In " + timeToRun + "ms we sampled " + lambdasCount.get() + " times in partition " + localKey);
+        int approxVertices = numberLocalVertices * allKeys.length;
+        System.out.println("In partition " + localKey + " we found approximate " + approxVertices + " 'allvertexids'");
+        double result = (lambdas.get() / lambdasCount.get()) * approxVertices;
+        if(lambdasCount.get()==0) {
+            result = 0;
+        }
+        String output = "In partition " + localKey + " we estimated " + result + " triangles";
         System.out.println(output);
         return output;
     }
-
-
-    public class stopAlgorithm extends TimerTask {
-        @Override
-        public void run() {
-            System.out.println("Stop running");
-            cont = false;
-            cancel();
-        }
-
-        @Override
-        public boolean cancel() {
-            return super.cancel();
-        }
-    }
 }
+

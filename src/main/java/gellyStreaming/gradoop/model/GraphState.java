@@ -927,7 +927,7 @@ public class GraphState implements Serializable {
             long currentTime = lastTimestamp.value();
             long validTo = currentTime + windowSize;
 
-            if(edgeCountSinceTimestamp.value() == 0) {
+            if(edgeCountSinceTimestamp.value() == 0 || !adjacencyList.contains(validTo)) {
                 adjacencyList.put(validTo, new HashMap<>());
                 if(!lazyPurging && slide != null) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
@@ -989,22 +989,27 @@ public class GraphState implements Serializable {
                     long current = ctx.timerService().currentProcessingTime();
                     out.collect("We started the onTimer "+(current-timestamp)+ " ms too late. If this is big, consider " +
                             "increasing slide, decreasing input rate or using a faster algorithm.");
-                    QueryState QS2 = new QueryState();
-                    QS2.initialize(jobID);
-                    out.collect("Result at time '" + timestamp + " : " +
-                            algorithm.doAlgorithm(adjacencyList, QS2, ctx.getCurrentKey(), keys,
-                                    timestamp, timestamp + windowSize));
+                    try {
+                        out.collect("Result at time '" + timestamp + " : " +
+                                algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
+                                        timestamp, timestamp + windowSize));
+                    } catch (Exception e) {
+                        System.out.println(e);
+                    }
                     out.collect("This took " + (ctx.timerService().currentProcessingTime() - current) + " ms");
 
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
                         out.collect("Last batch started at "+timestamps.peekLast());
                         //myLogWriter.appendLine("Last batch in "+ctx.getCurrentKey()+" started at "+timestamps.peekLast());
-                        QueryState QS2 = new QueryState();
-                        QS2.initialize(jobID);
-                        out.collect("Result at time '" + timestamp + " : " +
-                                algorithm.doAlgorithm(adjacencyList, QS2, ctx.getCurrentKey(), keys,
-                                        0, Long.MAX_VALUE));
+                        //Shouldnt need this.
+                        try {
+                            out.collect("Result at time '" + timestamp + " : " +
+                                    algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
+                                            0, Long.MAX_VALUE));
+                        } catch (Exception e) {
+                            System.out.println(e);
+                        }
                         out.collect("This took " + (ctx.timerService().currentProcessingTime() - timestamp) + " ms");
                     } else {
                         nextOutputTimestamp.update(timestamp+10000L);
