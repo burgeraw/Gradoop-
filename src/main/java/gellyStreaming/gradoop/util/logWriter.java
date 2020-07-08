@@ -1,4 +1,4 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop.util;
 
 import java.io.FileWriter;
 import java.io.IOException;

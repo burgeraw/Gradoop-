@@ -1,4 +1,6 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop.util;
+
+import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -12,10 +14,12 @@ public class globalCounter {
         counter = new AtomicLong(0);
     }
 
-    public void getAndIncrement() {
-        if(counter.getAndIncrement() >= valueToReach) {
-            System.exit(28);
+    public void increment() {
+        if(valueToReach > 0 && counter.incrementAndGet() >= valueToReach) {
+            System.out.println("Done putting all elements in state at: \t"+System.currentTimeMillis());
+            makeSimpleTemporalEdgeStream.stopInfiniteStream();
         }
+
     }
 
 }
