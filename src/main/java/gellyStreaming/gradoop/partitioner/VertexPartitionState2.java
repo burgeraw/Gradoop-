@@ -1,6 +1,6 @@
 package gellyStreaming.gradoop.partitioner;
 
-import gellyStreaming.gradoop.model.KeyGen;
+import gellyStreaming.gradoop.util.KeyGen;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 
 import java.io.Serializable;

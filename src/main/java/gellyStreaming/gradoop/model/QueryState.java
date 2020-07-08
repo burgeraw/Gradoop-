@@ -7,6 +7,7 @@ import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple1;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.queryablestate.client.QueryableStateClient;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
@@ -210,6 +211,48 @@ public class QueryState implements Serializable {
         }
         if(results.get()) {
             return toReturn.f0;
+        } else {
+            throw new Exception();
+        }
+    }
+
+    public Tuple2<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>, Integer> getALVerticesFromToPlusTotal(
+            Integer key, GradoopId[] vertexIds, long From, long To) throws Exception {
+        CompletableFuture<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "adjacencyList",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptorAL);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        final Tuple1<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> def = new Tuple1<>();
+        final Tuple2<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>, Integer> toReturn = Tuple2.of(new HashMap<>(),0);
+        HashSet<GradoopId> allVertices = new HashSet<>();
+        try {
+            def.f0 = resultFuture.get();
+            for(long timestamp: def.f0.keys()) {
+                if(timestamp <= To && timestamp >= From) {
+                    allVertices.addAll(def.f0.get(timestamp).keySet());
+                    for (GradoopId id : vertexIds) {
+                        if (def.f0.get(timestamp).containsKey(id)) {
+                            if (!toReturn.f0.containsKey(id)) {
+                                toReturn.f0.put(id, new HashMap<>());
+                            }
+                            toReturn.f0.get(id).putAll(def.f0.get(timestamp).get(id));
+                        }
+                    }
+                }
+            }
+            toReturn.f1 = allVertices.size();
+            results.set(true);
+        }catch (Exception e) {
+            throw e;
+            //System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+        }
+        if(results.get()) {
+            return toReturn;
         } else {
             throw new Exception();
         }

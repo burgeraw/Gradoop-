@@ -7,8 +7,9 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
-//TODO: clean up? lots of unused methods.
-
+/**
+ * Created by zainababbas on 21/02/2017.
+ */
 public class StoredVertexPartitionState implements Serializable{
 
     public final HashMap<Long, StoredVertex> record_map;

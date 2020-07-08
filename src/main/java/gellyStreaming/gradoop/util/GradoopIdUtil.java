@@ -1,4 +1,4 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop.util;
 
 import org.gradoop.common.model.impl.id.GradoopId;
 
@@ -9,9 +9,9 @@ public class GradoopIdUtil {
     }
 
     public static Long getLong(GradoopId gradoopId) {
+        // for example: 7fffffff0000000000000000 = 2147483647 = max vertex number allowed.
         String s = gradoopId.toString();
-        // example: 00000000ffffff0000000000
-        String substring = s.substring(8,14);
+        String substring = s.substring(0,8);
         return Long.parseLong(substring, 16);
     }
 }

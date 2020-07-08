@@ -1,6 +1,6 @@
 package gellyStreaming.gradoop.algorithms;
 
-import gellyStreaming.gradoop.model.GradoopIdUtil;
+import gellyStreaming.gradoop.util.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import org.apache.flink.api.common.state.MapState;
 import org.gradoop.common.model.impl.id.GradoopId;

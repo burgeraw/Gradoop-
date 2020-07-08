@@ -1,16 +1,20 @@
-package gellyStreaming.gradoop.model;
+package gellyStreaming.gradoop;
 
 
 import gellyStreaming.gradoop.algorithms.*;
+import gellyStreaming.gradoop.model.GraphState;
+import gellyStreaming.gradoop.model.QueryState;
+import gellyStreaming.gradoop.model.SimpleTemporalEdgeStream;
 import gellyStreaming.gradoop.partitioner.*;
+import gellyStreaming.gradoop.util.GradoopIdUtil;
+import gellyStreaming.gradoop.util.HelpState;
+import gellyStreaming.gradoop.util.PartitionEdges;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.configuration.*;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.core.fs.FileSystem;
@@ -19,7 +23,6 @@ import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
@@ -331,9 +334,10 @@ public class Tests {
     }
 
     public static void GradoopIdTests() {
-        for(int i = 0; i < 1000; i++) {
-            //int i = 16777215;
-            GradoopId test = new GradoopId(0, i, (short) 0, 0);
+        for(int i = 2147483646; i < 2147483647; i++) {
+            //int i = 16777215 is max for machine id;
+            //int i = 2147483647 is max for timestamp
+            GradoopId test = new GradoopId(i, 0, (short) 0, 0);
             System.out.println(i + " : " + test.toString());
             System.out.println(GradoopIdUtil.getLong(test));
         }
@@ -390,9 +394,9 @@ public class Tests {
         //testBuildingState();
         //makeAL();
         //testVertexPartitioner();
-        vertexBasedTriangleCounting();
+        //vertexBasedTriangleCounting();
         //testDecoupled();
-        //GradoopIdTests();
+        GradoopIdTests();
         //Thread.sleep(100000);
         //Runtime rt2 = Runtime.getRuntime();
         //long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;

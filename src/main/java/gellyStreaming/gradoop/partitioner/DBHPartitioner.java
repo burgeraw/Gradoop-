@@ -1,11 +1,14 @@
 package gellyStreaming.gradoop.partitioner;
 
-import gellyStreaming.gradoop.model.KeyGen;
+import gellyStreaming.gradoop.util.KeyGen;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 
 import java.util.Random;
 
+/**
+ * Created by zainababbas on 21/02/2017.
+ */
 public class DBHPartitioner<K, V> implements Partitioner<K> {
     private static final long serialVersionUID = 1L;
     private final CustomKeySelector<K, V> keySelector;

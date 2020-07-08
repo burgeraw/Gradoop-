@@ -1,6 +1,6 @@
 package gellyStreaming.gradoop.partitioner;
 
-import gellyStreaming.gradoop.model.KeyGen;
+import gellyStreaming.gradoop.util.KeyGen;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -17,7 +17,9 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
 
-
+/**
+ * Created by zainababbas on 21/02/2017.
+ */
 public class FennelPartitioning implements Serializable {
 
     private int FennelID;

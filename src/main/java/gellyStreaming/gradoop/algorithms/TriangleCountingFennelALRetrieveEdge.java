@@ -1,16 +1,14 @@
 package gellyStreaming.gradoop.algorithms;
 
-import gellyStreaming.gradoop.model.GradoopIdUtil;
+import gellyStreaming.gradoop.util.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.partitioner.FennelPartitioning;
-import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.io.Serializable;
-import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;

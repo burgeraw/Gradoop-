@@ -4,6 +4,9 @@ import java.io.Serializable;
 import java.util.Iterator;
 import java.util.TreeSet;
 
+/**
+ * Created by zainababbas on 21/02/2017.
+ */
 public class StoredVertex implements Serializable {
 
     private final TreeSet<Byte> partitions;

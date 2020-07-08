@@ -5,7 +5,9 @@ import org.apache.flink.graph.Edge;
 
 import java.util.HashMap;
 
-
+/**
+ * Created by zainababbas on 21/02/2017.
+ */
 public class CustomKeySelector<K, EV> implements KeySelector<Edge<K, EV>, K> {
     private final int key1;
     private static final HashMap<Object, Object> keyMap = new HashMap<>();

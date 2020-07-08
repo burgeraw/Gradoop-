@@ -23,14 +23,14 @@ import org.gradoop.temporal.model.impl.pojo.TemporalGraphHead;
 import org.gradoop.temporal.model.impl.pojo.TemporalVertex;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> {
 
     private final StreamExecutionEnvironment context;
     private final DataStream<TemporalEdge> edges;
     private final GradoopIdSet graphIdSet;
-
-    // GraphHead could possibly be used to save global information / state
 
     public SimpleTemporalEdgeStream(DataStream<TemporalEdge> edges,
                                     StreamExecutionEnvironment context,
@@ -49,8 +49,6 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         return this.graphIdSet;
     }
 
-    //TODO What if edges/vertices get removed? Only appropriate for edge addition streams?
-    //TODO: Also, is this scalable? MinBy works over 2*E, which might be too much to keep in memory
     /**
      * @return All distinct vertices with a timestamp of their earliest reference as a src or trg of an edge
      */
@@ -71,8 +69,8 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     }
 
     public static final class VertexMapper implements FlatMapFunction<Tuple2<GradoopId, Long>, TemporalVertex> {
-        private Set<GradoopId> vertices;
-        private GradoopIdSet gradoopIds;
+        private final Set<GradoopId> vertices;
+        private final GradoopIdSet gradoopIds;
 
         public VertexMapper(GradoopIdSet graphIdSet) {
             this.vertices = new HashSet<>();
@@ -100,23 +98,19 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         return this.edges;
     }
 
-    //TODO implement if want to use GraphHead for global info / state
+    // Could be used to keep global information / graph sketches.
     @Override
     public DataStream<TemporalGraphHead> getGraphHead() {
         return null;
     }
 
-    // TODO: implement so that only last gets maintained? And what about if the properties are different?
-    // TODO: Also, think about how multiple graphs get combined, like in GRADOOP and a single edge can be part
-    // TODO: of multiple (logical) graphs.
-    // TODO: Also, does distinct even make sense in a temporal context?
     @Override
     public GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> distinct() {
         DataStream<TemporalEdge> distinctEdges = this.edges
                 .keyBy((KeySelector<TemporalEdge, Object>) TemporalEdge::getSourceId)
                 .flatMap(
                 new FlatMapFunction<TemporalEdge, TemporalEdge>() {
-                    Set<GradoopId> neighbours = new HashSet<>();
+                    final Set<GradoopId> neighbours = new HashSet<>();
                     @Override
                     public void flatMap(TemporalEdge temporalEdge, Collector<TemporalEdge> collector) {
                         if(!neighbours.contains(temporalEdge.getTargetId())) {
@@ -227,33 +221,19 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         }
     }
 
-    // TODO: works when parallelism set to 1, figure out how to make it work in parallel
-    // Tried KeyBy but no success
-    // Maybe test if counter++, or Hashset is faster, if parallelism(1) needs to be used anyway
     @Override
     public DataStream<Long> numberOfEdges() {
         return this.edges
-                //.keyBy(new EdgeKeySelector())
-                .map(new EdgeMapper())
-                .setParallelism(1);
+                .map(new MapFunction<TemporalEdge, Long>() {
+                    final AtomicLong counter = new AtomicLong(0);
+                    @Override
+                    public Long map(TemporalEdge edge) throws Exception {
+                        return counter.incrementAndGet();
+                    }
+                });
     }
 
-    public static final class EdgeMapper implements MapFunction<TemporalEdge, Long> {
-        Long counter;
-        public EdgeMapper() {
-            this.counter = 0L;
-        }
 
-        @Override
-        public Long map(TemporalEdge temporalEdge) {
-            counter++;
-            return counter;
-        }
-    }
-
-    // TODO: works when parallelism set to 1, figure out how to make it work in parallel
-    // TODO: Tried keyBy, but no success
-    // TODO: broadcast works but is it scalable? net.time faster than with parallel(1), but seems double work..
     @Override
     public DataStream<Long> numberOfVertices() {
         return this.edges
@@ -364,7 +344,6 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
         }
     }
 
-    //TODO: rewrite to return any type?
     @Override
     public GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> mapEdges(
             MapFunction<TemporalEdge, TemporalEdge> mapper) {
@@ -405,38 +384,6 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     }
 
 
-/*
-keyed on source or target vertex --> good for adjacency list
- */
-    public GradoopSnapshotStream slice(Time size, Time slide, EdgeDirection direction, String strategy)
-            throws IllegalArgumentException {
-
-            switch (direction) {
-                case IN:
-                    return new GradoopSnapshotStream(
-                            getEdges()
-                                    .keyBy(new NeighborKeySelector("src"))
-                                    .window(SlidingEventTimeWindows.of(size, slide))
-                            , strategy);
-
-                case OUT:
-                    return new GradoopSnapshotStream(
-                            getEdges()
-                                    .keyBy(new NeighborKeySelector("trg"))
-                                    .window(SlidingEventTimeWindows.of(size, slide))
-                            , strategy);
-                case ALL:
-                    return new GradoopSnapshotStream(
-                            this.undirected()
-                                    .getEdges()
-                                    .keyBy(new NeighborKeySelector("src"))
-                                    .window(SlidingEventTimeWindows.of(size, slide))
-                            , strategy);
-                default:
-                    throw new IllegalArgumentException("Illegal edge direction");
-            }
-    }
-
     static class GraphIdSelector implements KeySelector<TemporalEdge, GradoopIdSet> {
         @Override
         public GradoopIdSet getKey(TemporalEdge temporalEdge) {
@@ -464,7 +411,7 @@ keyed on source or target vertex --> good for adjacency list
                                  Integer numPartitions,
                                  Boolean lazyPurging,
                                  int batchSize,
-                                 Algorithm algorithm)throws InterruptedException {
+                                 Algorithm algorithm) {
         return new GraphState(QS,
                 this.edges.keyBy(new getPartitionId()),
                 strategy,

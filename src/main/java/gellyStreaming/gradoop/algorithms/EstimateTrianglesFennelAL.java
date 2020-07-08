@@ -1,21 +1,17 @@
 package gellyStreaming.gradoop.algorithms;
 
 import com.google.common.util.concurrent.AtomicDouble;
-import gellyStreaming.gradoop.model.GradoopIdUtil;
+import gellyStreaming.gradoop.util.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.partitioner.FennelPartitioning;
 import org.apache.flink.api.common.state.MapState;
-import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-
-import static java.lang.Double.NaN;
 
 public class EstimateTrianglesFennelAL implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
 
@@ -93,6 +89,15 @@ public class EstimateTrianglesFennelAL implements Algorithm<String, MapState<Lon
         AtomicInteger lambdasCount = new AtomicInteger(0);
         AtomicDouble lambdas = new AtomicDouble(0);
 
+        Integer[] verticesInPartitions = new Integer[allKeys.length];
+        for(int i = 0 ; i < allKeys.length; i++) {
+            if(allKeys[i].equals(localKey)) {
+                verticesInPartitions[i] = localAdjacencyList.keySet().size();
+            } else {
+                verticesInPartitions[i] = -1;
+            }
+        }
+
         GradoopId[] vertexIds = localAdjacencyList.keySet().toArray(GradoopId[]::new);
         int numberLocalVertices = vertexIds.length;
 
@@ -159,12 +164,26 @@ public class EstimateTrianglesFennelAL implements Algorithm<String, MapState<Lon
 
             if (QSqueueSize.get() >= QSbatchsize && System.currentTimeMillis() < runUntil) {
                 for (int partition : QSqueue.keySet()) {
+                    int indexPartition = -1;
+                    for(int j = 0; j < allKeys.length; j++) {
+                        if(allKeys[j]==partition) {
+                            indexPartition = j;
+                        }
+                    }
                     GradoopId[] toQuery = QSqueue.get(partition).keySet().toArray(GradoopId[]::new);
                     int tries = 0;
                     while (tries < 10) {
                         try {
-                            HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> retrieved =
-                                    QS.getALVerticesFromTo(partition, toQuery, from, maxValidTo);
+                            HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> retrieved;
+                            if(verticesInPartitions[indexPartition] == -1) {
+                                Tuple2<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>, Integer> temp =
+                                        QS.getALVerticesFromToPlusTotal(partition, toQuery, from, maxValidTo);
+                                retrieved = temp.f0;
+                                verticesInPartitions[indexPartition] = temp.f1;
+                            } else {
+                                retrieved =
+                                        QS.getALVerticesFromTo(partition, toQuery, from, maxValidTo);
+                            }
                             for (GradoopId id3 : toQuery) {
                                 Set<GradoopId> neighbours3 = retrieved.get(id3).keySet();
                                 if (caching) {
@@ -202,7 +221,20 @@ public class EstimateTrianglesFennelAL implements Algorithm<String, MapState<Lon
             }
         }
         System.out.println("In " + timeToRun + "ms we sampled " + lambdasCount.get() + " times in partition " + localKey);
-        int approxVertices = numberLocalVertices * allKeys.length;
+        int totalVertices = 0;
+        int partitionsCounted = 0;
+        for(int i = 0; i < verticesInPartitions.length; i++) {
+            if(verticesInPartitions[i] != -1) {
+                totalVertices = totalVertices + verticesInPartitions[i];
+                partitionsCounted++;
+            }
+        }
+        int approxVertices = 0;
+        if(partitionsCounted == allKeys.length) {
+            approxVertices = totalVertices;
+        } else {
+            approxVertices = (int)((double)totalVertices / partitionsCounted * allKeys.length);
+        }
         System.out.println("In partition " + localKey + " we found approximate " + approxVertices + " 'allvertexids'");
         double result = (lambdas.get() / lambdasCount.get()) * approxVertices;
         if(lambdasCount.get()==0) {

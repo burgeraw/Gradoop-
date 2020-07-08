@@ -1,10 +1,9 @@
-package gellyStreaming.gradoop.partitioner;
+package gellyStreaming.gradoop.util;
 
-import java.io.Serializable;
 import java.util.HashMap;
 import java.util.HashSet;
 
-public class HelpState implements Serializable {
+public class HelpState {
 
     HashMap<Long, HashSet<Long>> state;
     Boolean makeUndirected;
@@ -26,6 +25,18 @@ public class HelpState implements Serializable {
             }
             state.get(trg).add(src);
         }
+    }
+
+    public int getNumberVertices() {
+        return state.keySet().size();
+    }
+
+    public int getNumberEdges() {
+        int size = 0;
+        for(long vertex : state.keySet()) {
+            size = size + state.get(vertex).size();
+        }
+        return size;
     }
 
     public HashMap<Long, HashSet<Long>> returnState() {
