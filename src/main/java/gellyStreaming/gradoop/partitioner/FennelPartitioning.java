@@ -34,6 +34,7 @@ public class FennelPartitioning implements Serializable {
             StreamExecutionEnvironment env,
             String inputPath, Integer numberOfPartitions,
             int vertexCount, int edgeCount) throws IOException {
+        System.out.println("Started Fennel partitioning at \\t"+System.currentTimeMillis());
         env.setParallelism(1);
         DataStream<Tuple2<Long, List<Long>>> input = getVertices(env, inputPath);
         CustomKeySelector2<Long, Long> keySelector = new CustomKeySelector2<>(0);

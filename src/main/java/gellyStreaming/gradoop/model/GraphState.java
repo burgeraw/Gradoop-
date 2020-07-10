@@ -175,6 +175,7 @@ public class GraphState implements Serializable {
 
         @Override
         public void open(Configuration parameters) throws Exception {
+            System.out.println("Thread \t"+Thread.currentThread().getId()+"\t opens at: \t"+System.currentTimeMillis());
             MapStateDescriptor<Long, HashMap<GradoopId, List<Tuple2<GradoopId, TemporalEdge>>>> descriptor =
                     new MapStateDescriptor<>(
                             "sortedEdgeList",
@@ -194,6 +195,11 @@ public class GraphState implements Serializable {
             ValueStateDescriptor<Long> descriptor4 = new ValueStateDescriptor<Long>(
                     "nextOutputTimestamp", Long.class);
             nextOutputTimestamp = getRuntimeContext().getState(descriptor4);
+        }
+
+        @Override
+        public void close() throws Exception {
+            System.out.println("Thread \t"+Thread.currentThread().getId()+"\t closes at: \t"+System.currentTimeMillis());
         }
 
         @Override
@@ -307,11 +313,6 @@ public class GraphState implements Serializable {
                     }
                 }
             }
-        }
-
-        @Override
-        public void close() throws Exception {
-            super.close();
         }
     }
 
@@ -466,6 +467,7 @@ public class GraphState implements Serializable {
 
         @Override
         public void open(Configuration parameters) throws Exception {
+            System.out.println("Thread \t"+Thread.currentThread().getId()+"\t opened at: \t"+System.currentTimeMillis());
             MapStateDescriptor<Long, List<Tuple3<GradoopId, GradoopId, TemporalEdge>>> descriptor = new MapStateDescriptor<>(
                     "edgeList",
                     TypeInformation.of(new TypeHint<Long>() {
@@ -484,6 +486,11 @@ public class GraphState implements Serializable {
             ValueStateDescriptor<Long> descriptor4 = new ValueStateDescriptor<Long>(
                     "nextOutputTimestamp", Long.class);
             nextOutputTimestamp = getRuntimeContext().getState(descriptor4);
+        }
+
+        @Override
+        public void close() throws Exception {
+            System.out.println("Thread \t"+Thread.currentThread().getId()+"\t closes at: \t"+System.currentTimeMillis());
         }
 
         @Override
