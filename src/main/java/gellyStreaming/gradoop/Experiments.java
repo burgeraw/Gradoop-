@@ -25,19 +25,22 @@ public class Experiments {
                                     String edgeOrVertexPartitioner,
                                     String numberOfVertices) {
         File log = new File("Results/Experiment1a_edges" + numberOfEdges +"_"+datastructure+"_"+edgeOrVertexPartitioner+"partitioned_run" + runNumber+".txt");
-        int numberOfPartitions = 25;
+        int numberOfPartitions = 3;
         PrintStream logStream = null;
         try {
             logStream = new PrintStream(log);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
-        System.setOut(logStream);
+        //System.setOut(logStream);
         System.out.println("Started job at \t" + System.currentTimeMillis());
-        Configuration config = new Configuration();
-        config.set(DeploymentOptions.ATTACHED, false);
-        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        //Configuration config = new Configuration();
+        //config.set(DeploymentOptions.ATTACHED, false);
+        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        System.out.println("Values given were: "+filepath+numberOfEdges+runNumber+datastructure+edgeOrVertexPartitioner+numberOfVertices);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream edgeStream;
         valueToReach = Long.parseLong(numberOfEdges);
@@ -48,11 +51,13 @@ public class Experiments {
             edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
                     env, numberOfPartitions, filepath, false);
         }
+        System.out.println("Got edges at "+System.currentTimeMillis());
         env.setParallelism(numberOfPartitions);
         QueryState QS = new QueryState();
         GraphState GS = edgeStream.buildState(QS, datastructure, 16000L, null,
                 numberOfPartitions, true, 1000,
                 null);
+        System.out.println("done at "+System.currentTimeMillis());
         try {
             env.execute();
         } catch (Exception e) {
@@ -77,10 +82,14 @@ public class Experiments {
         }
         System.setOut(logStream);
         System.out.println("Started job at \t" + System.currentTimeMillis());
-        Configuration config = new Configuration();
-        config.set(DeploymentOptions.ATTACHED, false);
-        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        // For local execution.
+        //Configuration config = new Configuration();
+        //config.set(DeploymentOptions.ATTACHED, false);
+        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        // For cluster execution.
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream edgeStream;
         valueToReach = Long.parseLong(numberOfEdges);

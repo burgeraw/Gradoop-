@@ -802,6 +802,8 @@ public class GraphState implements Serializable {
             }
 
             long currentTime = lastTimestamp.value();
+            System.out.println("currenttime:"+currentTime);
+            System.out.println("windowsize:"+windowSize);
             long validTo = currentTime + windowSize;
 
             if(edgeCountSinceTimestamp.value() == 0) {
