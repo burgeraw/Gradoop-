@@ -10,9 +10,10 @@ import java.util.HashMap;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 
-// Working triangle counting alg for both edge & fennel partitioner, which duplicates entire state.
+// Working triangle counting alg for both edge & fennel partitioner, which retrieves entire remote states.
 public class TriangleCountingALRetrieveAllState implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
 
     @Override
@@ -21,9 +22,26 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
         if (!QS.isInitilized()) {
             throw new Exception("We don't have Queryable State initialized.");
         }
+        AtomicLong QStimer = new AtomicLong(0);
         HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
+        // First retrieve local state.
         if(localState == null) {
-            localState = QS.getALState(localKey);
+            int tries = 0;
+            while(tries < 10) {
+                try {
+                    long start = System.currentTimeMillis();
+                    localState = QS.getALState(localKey);
+                    long stop = System.currentTimeMillis();
+                    QStimer.getAndAdd((stop - start));
+                    break;
+                } catch(Exception e) {
+                    tries++;
+                    if(tries>= 10) {
+                        System.out.println("Error retrieving state. " + e);
+                    }
+                }
+            }
+
         }
         for(long timestamp: localState.keys()) {
             if(timestamp <= maxValidTo && timestamp>= from) {
@@ -37,14 +55,18 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                 }
             }
         }
+        // Get rest of states.
         for(int key : allKeys) {
             if(key != localKey) {
                 int tries = 0;
                 int maxTries = 10;
                 while(tries < maxTries) {
                     try {
+                        long start = System.currentTimeMillis();
                         MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> tempState =
                                 QS.getALState(key);
+                        long stop = System.currentTimeMillis();
+                        QStimer.getAndAdd((stop-start));
                         for (Long timestamp : tempState.keys()) {
                             if (timestamp <= maxValidTo && timestamp >= from) {
                                 for(GradoopId src : tempState.get(timestamp).keySet()) {
@@ -66,6 +88,11 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                 }
             }
         }
+        // Iterate over vertex IDs and all pairs of its neighbours (which forms a wedge) and check if these
+        // two neighbours are connected with an egde, which makes it a triangle.
+        // Only count the triangles if the srcId < neighbour1 < neighbour2 to avoid duplicates.
+        // Only start with vertices what, when used Modulo, are allocated to this partition.
+        // This so each partition only check a non-overlapping part of the potential triangles.
         AtomicInteger triangleCount = new AtomicInteger(0);
         for (GradoopId srcId : localAdjacencyList.keySet()) {
             if(GradoopIdUtil.getModulo(srcId, localKey, allKeys)) {
@@ -97,6 +124,7 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                 }
             }
         }
+        System.out.println("Time spend on QS in partition \t"+localKey+"\t:\t"+QStimer.get());
         return "In partition "+localKey+" we found "+triangleCount.get()+" triangles ";
     }
 }

@@ -13,6 +13,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>>, Serializable {
 
@@ -40,15 +41,23 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
             System.out.println("No QS");
             throw new Exception("We don't have Queryable State initialized.");
         }
-        ConcurrentHashMap<Integer, Tuple2<LinkedList<GradoopId>, LinkedList<GradoopId>>> QSqueue = new ConcurrentHashMap<>();
-        ConcurrentHashMap<GradoopId, HashSet<GradoopId>> cache = new ConcurrentHashMap<>();
+        // Queue for checking remote partitions if an edge if present. Format: Hashmap<partition to query, Tuple2<
+        // List of source vertices , List of target vertices >>
+        HashMap<Integer, Tuple2<LinkedList<GradoopId>, LinkedList<GradoopId>>> QSqueue = new HashMap<>();
+        HashMap<GradoopId, HashSet<GradoopId>> cache = new HashMap<>();
         AtomicInteger QSqueueSize = new AtomicInteger(0);
+        AtomicLong QStimer = new AtomicLong(0);
 
         HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
         int tries1 = 0;
+        // If fully decoupled, we first need to retrieve the 'local'state.
         while(localState==null && tries1 < 10) {
             try {
+                long start = System.currentTimeMillis();
                 localState = QS.getALState(localKey);
+                long stop = System.currentTimeMillis();
+                QStimer.getAndAdd((stop-start));
+                break;
             } catch (Exception e) {
                 tries1++;
                 if(tries1==10) {
@@ -56,9 +65,7 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
                 }
             }
         }
-        if(localState==null) {
-            throw new Error("Everything is wrong.");
-        }
+        // Take relevant timestamps & put them in a single hashmap
         for(long timestamp: localState.keys()) {
             if(timestamp >= from && timestamp <= maxValidTo) {
                 for (GradoopId src : localState.get(timestamp).keySet()) {
@@ -69,6 +76,9 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
                 }
             }
         }
+        // Iterate over vertex IDs and all pairs of its neighbours (which forms a wedge) and check if these
+        // two neighbours are connected with an egde, which makes it a triangle.
+        // Only count the triangles if the srcId < neighbour1 < neighbour2 to avoid duplicates.
         AtomicInteger triangleCount = new AtomicInteger(0);
         for (GradoopId srcId : localAdjacencyList.keySet()) {
             Set<GradoopId> neighboursSet = localAdjacencyList.get(srcId).keySet();
@@ -105,6 +115,7 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
                             }
                             if(!triangle.get() && !localAdjacencyList.containsKey(neighbour1) &&
                                     !localAdjacencyList.containsKey(neighbour2)) {
+                                // Retrieve the partition the neighbour is in from the fennel partitioner.
                                 Iterator<Byte> byteIterator = fennel.getPartitions(GradoopIdUtil.getLong(neighbour1));
                                 List<Byte> byteList = new LinkedList<>();
                                 while (byteIterator.hasNext()) {
@@ -112,6 +123,8 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
                                 }
                                 for(Byte partition : byteList) {
                                     int partitionKey = allKeys[partition];
+                                    // Add the request to the queue, with the partition to retrieve it from,
+                                    // and the two vertexIDs for which we want to check if it contains an edge.
                                     if(!QSqueue.containsKey(partitionKey)) {
                                         QSqueue.put(partitionKey, Tuple2.of(new LinkedList<>(), new LinkedList<>()));
                                     }
@@ -126,8 +139,11 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
                                             int tries = 0;
                                             while (tries < 10) {
                                                 try {
+                                                    long start = System.currentTimeMillis();
                                                     Boolean[] temp = QS.ALcontainsEdgesFromTo(
                                                             partitionToQuery, listSrc, listTrg, from, maxValidTo);
+                                                    long stop = System.currentTimeMillis();
+                                                    QStimer.getAndAdd((stop-start));
                                                     for(int k = 0; k < temp.length; k++) {
                                                         if(temp[k]) {
                                                             if (caching) {
@@ -150,7 +166,7 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
                                             }
                                         }
                                         QSqueueSize.set(0);
-                                        QSqueue = new ConcurrentHashMap<>();
+                                        QSqueue = new HashMap<>();
                                     }
                                 }
                             }
@@ -167,8 +183,11 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
                 int tries = 0;
                 while (tries < 10) {
                     try {
+                        long start = System.currentTimeMillis();
                         Boolean[] temp = QS.ALcontainsEdgesFromTo(
                                 partitionToQuery, listSrc, listTrg, from, maxValidTo);
+                        long stop = System.currentTimeMillis();
+                        QStimer.getAndAdd((stop-start));
                         for (Boolean aBoolean : temp) {
                             if (aBoolean) {
                                 triangleCount.getAndIncrement();
@@ -186,7 +205,8 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
             }
         }
         String output = "In partition "+localKey+" we found "+triangleCount.get()+" triangles ";
-        System.out.println(output);
+        System.out.println("Time spend on QS in partition \t"+localKey+"\t:\t"+QStimer.get());
+        //System.out.println(output);
         return output;
     }
 }

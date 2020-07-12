@@ -23,6 +23,7 @@ public class makeSimpleTemporalEdgeStream {
 
     private static boolean cont;
     public static FennelPartitioning fennel;
+    public static SourceFunction<TemporalEdge> infinite;
 
     public static SimpleTemporalEdgeStream getVertexPartitionedStream(StreamExecutionEnvironment env,
                                                                       Integer numberOfPartitions,
@@ -137,7 +138,7 @@ public class makeSimpleTemporalEdgeStream {
                 );
             }
         });
-        SourceFunction<TemporalEdge> infinite = new SourceFunction<TemporalEdge>() {
+        infinite = new SourceFunction<TemporalEdge>() {
             @Override
             public void run(SourceContext<TemporalEdge> sourceContext) throws Exception {
                 while (cont) {
@@ -166,6 +167,7 @@ public class makeSimpleTemporalEdgeStream {
 
     public static void stopInfiniteStream() {
         cont = false;
+        infinite.cancel();
     }
 
 }

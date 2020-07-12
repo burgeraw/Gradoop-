@@ -7,9 +7,18 @@ import java.util.HashSet;
 
 public class ELtoAL {
     public static void main(String[] args) throws IOException {
-        String inputEL = args[0];
-        String outputAL = args[1];
-        String makeUndirected = args[2];
+        String inputEL;
+        String outputAL;
+        String makeUndirected;
+        if(args.length == 0) {
+            inputEL = "src/main/resources/email-Eu-core.txt";
+            outputAL = "resources/AL/email-Eu-core";
+            makeUndirected = "true";
+        } else {
+            inputEL = args[0];
+            outputAL = args[1];
+            makeUndirected = args[2];
+        }
         HelpState state = new HelpState(Boolean.parseBoolean(makeUndirected));
         FileReader fr = new FileReader(inputEL);
         BufferedReader br = new BufferedReader(fr);

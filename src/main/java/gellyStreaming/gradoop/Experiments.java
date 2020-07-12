@@ -1,5 +1,9 @@
 package gellyStreaming.gradoop;
 
+import gellyStreaming.gradoop.algorithms.Algorithm;
+import gellyStreaming.gradoop.algorithms.TriangleCountingALRetrieveAllState;
+import gellyStreaming.gradoop.algorithms.TriangleCountingFennelALRetrieveEdge;
+import gellyStreaming.gradoop.algorithms.TriangleCountingFennelALRetrieveVertex;
 import gellyStreaming.gradoop.model.GraphState;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.model.SimpleTemporalEdgeStream;
@@ -7,8 +11,10 @@ import gellyStreaming.gradoop.util.makeSimpleTemporalEdgeStream;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.DeploymentOptions;
 import org.apache.flink.configuration.QueryableStateOptions;
+import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -16,7 +22,9 @@ import java.io.PrintStream;
 
 public class Experiments {
 
+    // Can be set to a value so that the program exits, and the infinite stream stops.
     public static long valueToReach = -1;
+    public static int algValueToReach = -1;
 
     public static void Experiment1a(String filepath,
                                     String numberOfEdges,
@@ -25,39 +33,41 @@ public class Experiments {
                                     String edgeOrVertexPartitioner,
                                     String numberOfVertices) {
         File log = new File("Results/Experiment1a_edges" + numberOfEdges +"_"+datastructure+"_"+edgeOrVertexPartitioner+"partitioned_run" + runNumber+".txt");
-        int numberOfPartitions = 3;
+        int numberOfPartitions = 4;
         PrintStream logStream = null;
         try {
             logStream = new PrintStream(log);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
-        //System.setOut(logStream);
+        System.setOut(logStream);
         System.out.println("Started job at \t" + System.currentTimeMillis());
-        //Configuration config = new Configuration();
-        //config.set(DeploymentOptions.ATTACHED, false);
-        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
-        System.out.println("Values given were: "+filepath+numberOfEdges+runNumber+datastructure+edgeOrVertexPartitioner+numberOfVertices);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        //For local execution
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+
+        // For cluster execution
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream edgeStream;
         valueToReach = Long.parseLong(numberOfEdges);
         if (edgeOrVertexPartitioner.equals("vertex")) {
-            edgeStream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(env, numberOfPartitions, filepath,
+            edgeStream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(
+                    env, numberOfPartitions, filepath,
                     Integer.parseInt(numberOfVertices), Integer.parseInt(numberOfEdges), false);
         } else {
             edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
                     env, numberOfPartitions, filepath, false);
         }
-        System.out.println("Got edges at "+System.currentTimeMillis());
         env.setParallelism(numberOfPartitions);
         QueryState QS = new QueryState();
+        // By setting slide to null, we only get output once the full state is loaded.
         GraphState GS = edgeStream.buildState(QS, datastructure, 16000L, null,
                 numberOfPartitions, true, 1000,
                 null);
-        System.out.println("done at "+System.currentTimeMillis());
         try {
             env.execute();
         } catch (Exception e) {
@@ -83,12 +93,12 @@ public class Experiments {
         System.setOut(logStream);
         System.out.println("Started job at \t" + System.currentTimeMillis());
         // For local execution.
-        //Configuration config = new Configuration();
-        //config.set(DeploymentOptions.ATTACHED, false);
-        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         // For cluster execution.
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream edgeStream;
@@ -112,44 +122,201 @@ public class Experiments {
         }
     }
 
-    public void Experiment2() {
-
+    public static void Experiment2(String batchSizePerPU,
+                                   String runNumber,
+                                   String filepath,
+                                   String datastructure,
+                                   String activeOrLazyPurging,
+                                   String numberOfEdges) {
+        File log = new File("Results/Experiment2_batchSize" + batchSizePerPU+"_"+datastructure+"_"+activeOrLazyPurging + "purging_run" + runNumber+".txt");
+        int numberOfPartitions = 4; // local
+        //int numberOfPartitions = 100; //cluster
+        PrintStream logStream = null;
+        try {
+            logStream = new PrintStream(log);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+        System.setOut(logStream);
+        System.out.println("Started job at: \t" + System.currentTimeMillis());
+        // For local execution.
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        // For cluster execution.
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(numberOfPartitions);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        valueToReach = Long.parseLong(numberOfEdges);
+        SimpleTemporalEdgeStream edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
+                    env, numberOfPartitions, filepath, false);
+        env.setParallelism(numberOfPartitions);
+        QueryState QS = new QueryState();
+        // Change window/slide to fit dataset. System exits when all data has been loaded in state, so not
+        // all data also gets deleted.
+        GraphState GS = edgeStream.buildState(QS, datastructure, 300L, 50L,
+                numberOfPartitions, (activeOrLazyPurging.equals("lazy")), Integer.parseInt(batchSizePerPU),
+                null);
+        try {
+            env.execute();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
-    public static void main(String[] args) {
-        switch (args[0]) {
-            case "1a":
-                String filepath = args[1];
-                String numberOfEdges = args[2];
-                String runNumber = args[3];
-                String datastructure = args[4];
-                String edgeOrVertexPartitioner = args[5];
-                String numberOfVertices;
-                if(edgeOrVertexPartitioner.equals("vertex")) {
-                    numberOfVertices = args[6];
-                } else {
-                    numberOfVertices = null;
-                }
-                Experiment1a(filepath, numberOfEdges, runNumber, datastructure, edgeOrVertexPartitioner, numberOfVertices);
-                break;
-            case "1b":
-                String parallelism = args[1];
-                runNumber = args[2];
-                String datasetFilepath = args[3];
-                datastructure = args[4];
-                edgeOrVertexPartitioner = args[5];
-                if (edgeOrVertexPartitioner.equals("vertex")) {
+    public static void Experiment3a(String algorithmGranularity,
+                                    String edgeOrVertexPartitioner,
+                                    String withCaching,
+                                    String QSbatchSize,
+                                    String filepath,
+                                    String runNumber,
+                                    String numberOfVertices,
+                                    String numberOfEdges,
+                                    String fullyDecoupled) throws InstantiationException {
+        File log = new File("Results/Experiment3a_granularity" + algorithmGranularity+"_"+edgeOrVertexPartitioner+
+                "_caching"+withCaching+ "_run" + runNumber+"_fullyDecoupled"+fullyDecoupled+".txt");
+        int numberOfPartitions = 4; // local
+        //int numberOfPartitions = 100; //cluster
+        PrintStream logStream = null;
+        try {
+            logStream = new PrintStream(log);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+        System.setOut(logStream);
+        System.out.println("Started job at: \t" + System.currentTimeMillis());
+
+        // For local execution.
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+
+        // For cluster execution.
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        env.setParallelism(numberOfPartitions);
+        env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        //valueToReach = Long.parseLong(numberOfEdges);
+        algValueToReach = numberOfPartitions;
+        SimpleTemporalEdgeStream edgeStream;
+        env.setParallelism(numberOfPartitions);
+        Algorithm alg;
+        if(edgeOrVertexPartitioner.equals("edge")) {
+            edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
+                    env, numberOfPartitions, filepath, true);
+            alg = new TriangleCountingALRetrieveAllState();
+        } else if(edgeOrVertexPartitioner.equals("vertex")) {
+            edgeStream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(
+                    env, numberOfPartitions, filepath, Integer.parseInt(numberOfVertices),
+                    Integer.parseInt(numberOfEdges), true);
+            switch (algorithmGranularity) {
+                case "state":
+                    alg = new TriangleCountingALRetrieveAllState();
+                    break;
+                case "edge":
+                    alg = new TriangleCountingFennelALRetrieveEdge(makeSimpleTemporalEdgeStream.fennel,
+                            Integer.parseInt(QSbatchSize), (withCaching.equals("true")));
+                    break;
+                case "vertex":
+                    alg = new TriangleCountingFennelALRetrieveVertex(makeSimpleTemporalEdgeStream.fennel,
+                            Integer.parseInt(QSbatchSize), (withCaching.equals("true")));
+                    break;
+                default:
+                    throw new InstantiationException("Give either 'edge' or 'vertex' or 'state' as input for algorithmGranularity. ");
+            }
+        } else {
+            throw new InstantiationException("Give either 'edge' or 'vertex' as input for vertexPartitioner. ");
+        }
+        QueryState QS = new QueryState();
+        GraphState GS;
+        if(fullyDecoupled.equals("true")) {
+            GS = edgeStream.buildState(QS, "AL", 30000L, null,
+                    numberOfPartitions, true, 1000,
+                    null);
+            GS.doDecoupledAlg(alg).print();
+        } else {
+            GS = edgeStream.buildState(QS, "AL", 30000L, null,
+                    numberOfPartitions, true, 1000,
+                    alg);
+            GS.getAlgorithmOutput().print();
+        }
+        try {
+            JobClient jobClient = env.executeAsync();
+            GS.overWriteQS(jobClient.getJobID());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void main(String[] args) throws InstantiationException {
+        if (args.length == 0) {
+            //Experiment1a("src/main/resources/email-Eu-core.txt", "25571", "1",
+            //        "sortedEL", "edge", null);
+            //Experiment1b("8", "1", "src/main/resources/email-Eu-core.txt",
+            //        "EL", "edge", null, "25571");
+            //Experiment2("100", "1", "src/main/resources/email-Eu-core.txt",
+            //        "AL", "lazy", "25571");
+            //Experiment2("100", "1", "src/main/resources/email-Eu-core.txt",
+            //        "AL", "active", "25571");
+            Experiment3a("edge", "vertex", "true", "100000",
+                    "resources/AL/email-Eu-core", "1", "1005", "32770",
+                    "true");
+
+        } else {
+            switch (args[0]) {
+                case "1a":
+                    String filepath = args[1];
+                    String numberOfEdges = args[2];
+                    String runNumber = args[3];
+                    String datastructure = args[4];
+                    String edgeOrVertexPartitioner = args[5];
+                    String numberOfVertices;
+                    if (edgeOrVertexPartitioner.equals("vertex")) {
+                        numberOfVertices = args[6];
+                    } else {
+                        numberOfVertices = null;
+                    }
+                    Experiment1a(filepath, numberOfEdges, runNumber, datastructure, edgeOrVertexPartitioner, numberOfVertices);
+                    break;
+                case "1b":
+                    String parallelism = args[1];
+                    runNumber = args[2];
+                    String datasetFilepath = args[3];
+                    datastructure = args[4];
+                    edgeOrVertexPartitioner = args[5];
+                    if (edgeOrVertexPartitioner.equals("vertex")) {
+                        numberOfVertices = args[7];
+                        numberOfEdges = args[6];
+                    } else {
+                        numberOfVertices = null;
+                        numberOfEdges = args[6];
+                    }
+                    Experiment1b(parallelism, runNumber, datasetFilepath, datastructure, edgeOrVertexPartitioner, numberOfVertices, numberOfEdges);
+                    break;
+                case "2":
+                    String batchSizePerPU = args[1];
+                    runNumber = args[2];
+                    filepath = args[3];
+                    datastructure = args[4];
+                    String activeOrLazyPurging = args[5];
+                    numberOfEdges = args[6];
+                    Experiment2(batchSizePerPU, runNumber, filepath, datastructure, activeOrLazyPurging, numberOfEdges);
+                    break;
+                case "3a":
+                    String algorithmGranularity = args[1];
+                    edgeOrVertexPartitioner = args[2];
+                    String withCaching = args[3];
+                    String QSbatchSize = args[4];
+                    filepath = args[5];
+                    runNumber = args[6];
                     numberOfVertices = args[7];
-                    numberOfEdges = args[6];
-                } else {
-                    numberOfVertices = null;
-                    numberOfEdges = args[6];
-                }
-                Experiment1b(parallelism, runNumber, datasetFilepath, datastructure, edgeOrVertexPartitioner, numberOfVertices, numberOfEdges);
-                break;
-            case "2" :
-
-
+                    numberOfEdges = args[8];
+                    String fullyDecoupled = args[9];
+                    Experiment3a(algorithmGranularity, edgeOrVertexPartitioner, withCaching, QSbatchSize,
+                            filepath, runNumber, numberOfVertices, numberOfEdges, fullyDecoupled);
+            }
         }
     }
 }

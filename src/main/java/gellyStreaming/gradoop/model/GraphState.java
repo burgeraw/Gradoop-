@@ -4,6 +4,7 @@ import gellyStreaming.gradoop.Experiments;
 import gellyStreaming.gradoop.algorithms.Algorithm;
 import gellyStreaming.gradoop.util.KeyGen;
 import gellyStreaming.gradoop.util.globalCounter;
+import gellyStreaming.gradoop.util.makeSimpleTemporalEdgeStream;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
@@ -29,6 +30,7 @@ import java.io.Serializable;
 import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -72,18 +74,10 @@ public class GraphState implements Serializable {
         GraphState.batchSize = batchSize;
         GraphState.algorithm = algorithm;
         GraphState.firstTimestamp = System.currentTimeMillis()+1000L;
-        GraphState.myCounter = new globalCounter(Experiments.valueToReach);
+        GraphState.myCounter = new globalCounter(Experiments.valueToReach, Experiments.algValueToReach);
 
         if (algorithm == null) {
             switch (strategy) {
-                //Example how to use decoupled output:
-                /*
-                case "triangle" :
-                input.process(new ALdecoupled())
-                            .keyBy(
-                                    (KeySelector<Tuple3<Integer, Integer[], Long>, Integer>) integerLongTuple3 -> integerLongTuple3.f0)
-                            .process(new TriangleCounter()).print();
-                 */
                 case "EL":
                     decoupledOutput = input.process(new ELDecoupled());
                     break;
@@ -96,12 +90,6 @@ public class GraphState implements Serializable {
             }
         } else {
             switch (strategy) {
-                case "vertices":
-                    algorithmOutput = input.process(new CountingVertices(windowSize, slide));
-                    break;
-                case "triangles":
-                    algorithmOutput = input.process(new CountTriangles(windowSize, slide));
-                    break;
                 case "EL":
                     algorithmOutput = input.process(new ELwithAlg());
                     break;
@@ -115,6 +103,8 @@ public class GraphState implements Serializable {
         }
     }
 
+    // To perform an algorithm on fully decoupled state. Start with a Tuple4 that the statebuilding part out
+    // puts each slide, with {key, allKeys(to locate other remote partitions), from timestamp, to timestamp}
     public DataStream<String> doDecoupledAlg(Algorithm alg) {
         return decoupledOutput.keyBy(new KeySelector<Tuple4<Integer, Integer[], Long, Long>, Integer>() {
             @Override
@@ -131,6 +121,7 @@ public class GraphState implements Serializable {
                         integerLongLongTuple4.f2, integerLongLongTuple4.f3));
                 long after = context.timerService().currentProcessingTime();
                 collector.collect("This took "+(after-before)+" ms");
+                myCounter.incrementAlgResults();
             }
         });
     }
@@ -172,6 +163,7 @@ public class GraphState implements Serializable {
         private transient MapState<Long, HashMap<GradoopId, List<Tuple2<GradoopId, TemporalEdge>>>> sortedEdgeList;
         private transient ValueState<Long> nextOutputTimestamp;
         private static final LinkedList<Long> timestamps = new LinkedList<>();
+        private AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -285,9 +277,13 @@ public class GraphState implements Serializable {
                 } else {
                     sortedEdgeList.remove(timestamp);
                 }
+                removalTimeCounter.getAndAdd((System.currentTimeMillis()-timestamp));
             }
 
             if (timestamp == nextOutputTimestamp.value()) {
+                System.out.println(ctx.getCurrentKey()+"\t :State removal "+
+                        "took \t"+removalTimeCounter.get());
+                removalTimeCounter.set(0);
                 edgeCountSinceTimestamp.update(0);
                 long newtimestamp = timestamp;
                 if(newtimestamp == lastTimestamp.value()) {
@@ -300,12 +296,12 @@ public class GraphState implements Serializable {
                     timestamps.add(lastTimestamp.value());
                 }
                 if(slide != null) {
-                    System.out.println("We are now triggering output");
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
                     out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
+                        System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                         out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
                     } else {
                         nextOutputTimestamp.update(timestamp+10000L);
@@ -324,9 +320,11 @@ public class GraphState implements Serializable {
         private transient MapState<Long, HashMap<GradoopId, List<Tuple2<GradoopId, TemporalEdge>>>> sortedEdgeList;
         private transient ValueState<Long> nextOutputTimestamp;
         private static final LinkedList<Long> timestamps = new LinkedList<>();
+        private AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
+            System.out.println("Thread \t"+Thread.currentThread().getId()+"\t opens at: \t"+System.currentTimeMillis());
             MapStateDescriptor<Long, HashMap<GradoopId, List<Tuple2<GradoopId, TemporalEdge>>>> descriptor =
                     new MapStateDescriptor<>(
                             "sortedEdgeList",
@@ -352,7 +350,6 @@ public class GraphState implements Serializable {
         public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
             if (lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
-                collector.collect("Started building state at "+firstTimestamp);
                 edgeCountSinceTimestamp.update(0);
             }
             if(nextOutputTimestamp.value() == null && slide != null) {
@@ -421,9 +418,13 @@ public class GraphState implements Serializable {
                 } else {
                     sortedEdgeList.remove(timestamp);
                 }
+                removalTimeCounter.getAndAdd((System.currentTimeMillis()-timestamp));
             }
 
             if (timestamp == nextOutputTimestamp.value()) {
+                System.out.println(ctx.getCurrentKey()+"\t :State removal "+
+                        "took \t"+removalTimeCounter.get());
+                removalTimeCounter.set(0);
                 edgeCountSinceTimestamp.update(0);
                 long newtimestamp = timestamp;
                 if(newtimestamp == lastTimestamp.value()) {
@@ -431,21 +432,21 @@ public class GraphState implements Serializable {
                 }
                 lastTimestamp.update(newtimestamp);
                 if(slide != null) {
-                    System.out.println("We are now triggering output");
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
                     long current = ctx.timerService().currentProcessingTime();
-                    out.collect("We started the onTimer "+(current-timestamp)+ " ms too late. If this is big, consider " +
+                    out.collect(ctx.getCurrentKey()+"\t :We started the onTimer \t"+(current-timestamp)+ "\t ms too late. If this is big, consider " +
                             "increasing slide, decreasing input rate or using a faster algorithm");
-                    out.collect("Result at " + timestamp + " : " + algorithm.doAlgorithm(sortedEdgeList, QS,
+                    out.collect(ctx.getCurrentKey()+"\t :Result at " + timestamp + " : " + algorithm.doAlgorithm(sortedEdgeList, QS,
                             ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
-                    out.collect("This took " + (ctx.timerService().currentProcessingTime() - current) + " ms");
+                    out.collect(ctx.getCurrentKey()+"\t :This took \t" + (ctx.timerService().currentProcessingTime() - current) );
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
-                        out.collect("Last batch started at "+timestamps.peekLast());
-                        out.collect("Result at " + timestamp + " : " + algorithm.doAlgorithm(sortedEdgeList, QS,
+                        System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
+                        out.collect(ctx.getCurrentKey()+"\t :Result at " + timestamp + " : " + algorithm.doAlgorithm(sortedEdgeList, QS,
                                 ctx.getCurrentKey(), keys, 0, Long.MAX_VALUE));
-                        out.collect("This took " + (ctx.timerService().currentProcessingTime() - timestamp) + " ms");
+                        out.collect(ctx.getCurrentKey()+"\t :This took \t" + (ctx.timerService().currentProcessingTime() - timestamp));
+                        myCounter.incrementAlgResults();
                     } else {
                         nextOutputTimestamp.update(timestamp+10000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
@@ -463,7 +464,7 @@ public class GraphState implements Serializable {
         private transient MapState<Long, List<Tuple3<GradoopId, GradoopId, TemporalEdge>>> edgeList;
         private transient ValueState<Long> nextOutputTimestamp;
         private static final LinkedList<Long> timestamps = new LinkedList<>();
-
+        private AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -564,9 +565,13 @@ public class GraphState implements Serializable {
                 }else {
                     edgeList.remove(timestamp);
                 }
+                removalTimeCounter.getAndAdd((System.currentTimeMillis()-timestamp));
             }
 
             if (timestamp == nextOutputTimestamp.value()) {
+                System.out.println(ctx.getCurrentKey()+"\t :State removal "+
+                        "took \t"+removalTimeCounter.get());
+                removalTimeCounter.set(0);
                 edgeCountSinceTimestamp.update(0);
                 long newtimestamp = timestamp;
                 if(newtimestamp == lastTimestamp.value()) {
@@ -574,12 +579,12 @@ public class GraphState implements Serializable {
                 }
                 lastTimestamp.update(newtimestamp);
                 if(slide != null) {
-                    System.out.println("We are now triggering output");
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
                     out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp + windowSize));
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
+                        System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                         out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, 0L, Long.MAX_VALUE));
                     } else {
                         nextOutputTimestamp.update(timestamp+10000L);
@@ -598,9 +603,11 @@ public class GraphState implements Serializable {
         private transient MapState<Long, List<Tuple3<GradoopId, GradoopId, TemporalEdge>>> edgeList;
         private transient ValueState<Long> nextOutputTimestamp;
         private static final LinkedList<Long> timestamps = new LinkedList<>();
+        private AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
+            System.out.println("Thread \t"+Thread.currentThread().getId()+"\t opens at: \t"+System.currentTimeMillis());
             MapStateDescriptor<Long, List<Tuple3<GradoopId, GradoopId, TemporalEdge>>> descriptor = new MapStateDescriptor<>(
                     "edgeList",
                     TypeInformation.of(new TypeHint<Long>() {
@@ -628,7 +635,6 @@ public class GraphState implements Serializable {
             }
             if(lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
-                collector.collect("Started building state at "+firstTimestamp);
                 if(!lazyPurging && slide != null) {
                     context.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
                 } else {
@@ -699,9 +705,13 @@ public class GraphState implements Serializable {
                 }else {
                     edgeList.remove(timestamp);
                 }
+                removalTimeCounter.getAndAdd((System.currentTimeMillis()-timestamp));
             }
 
             if (timestamp == nextOutputTimestamp.value()) {
+                System.out.println(ctx.getCurrentKey()+"\t :State removal "+
+                        "took \t"+removalTimeCounter.get());
+                removalTimeCounter.set(0);
                 edgeCountSinceTimestamp.update(0);
                 long newtimestamp = timestamp;
                 if(newtimestamp == lastTimestamp.value()) {
@@ -714,22 +724,22 @@ public class GraphState implements Serializable {
                     timestamps.add(lastTimestamp.value());
                 }
                 if(slide != null) {
-                    System.out.println("We are now triggering output");
                     nextOutputTimestamp.update(timestamp + slide);
                     long current = ctx.timerService().currentProcessingTime();
-                    out.collect("We started the onTimer "+(current-timestamp)+ " ms too late. If this is big, consider " +
+                    out.collect(ctx.getCurrentKey()+"\t :We started the onTimer \t"+(current-timestamp)+ "\t ms too late. If this is big, consider " +
                             "increasing slide, decreasing input rate or using a faster algorithm");
-                    out.collect("Result at time " + timestamp + " : " +
+                    out.collect(ctx.getCurrentKey()+"\t :Result at time " + timestamp + " : " +
                             algorithm.doAlgorithm(edgeList, QS, ctx.getCurrentKey(), keys,
                                     timestamp, timestamp + windowSize));
-                    out.collect("This took " + (ctx.timerService().currentProcessingTime() - current) + " ms");
+                    out.collect(ctx.getCurrentKey()+"\t :This took \t" + (ctx.timerService().currentProcessingTime() - current));
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
-                        out.collect("Last batch started at "+timestamps.peekLast());
+                        System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                         out.collect("Result at time " + timestamp + " : " +
                                 algorithm.doAlgorithm(edgeList, QS, ctx.getCurrentKey(), keys,
                                         0, Long.MAX_VALUE));
-                        out.collect("This took " + (ctx.timerService().currentProcessingTime() - timestamp) + " ms");
+                        out.collect(ctx.getCurrentKey()+"\t :This took \t" + (ctx.timerService().currentProcessingTime() - timestamp));
+                        myCounter.incrementAlgResults();
                     } else {
                         nextOutputTimestamp.update(timestamp+10000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
@@ -747,6 +757,7 @@ public class GraphState implements Serializable {
         private transient MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> adjacencyList;
         private transient ValueState<Long> nextOutputTimestamp;
         private static final LinkedList<Long> timestamps = new LinkedList<>();
+        private AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -802,8 +813,6 @@ public class GraphState implements Serializable {
             }
 
             long currentTime = lastTimestamp.value();
-            System.out.println("currenttime:"+currentTime);
-            System.out.println("windowsize:"+windowSize);
             long validTo = currentTime + windowSize;
 
             if(edgeCountSinceTimestamp.value() == 0) {
@@ -852,9 +861,13 @@ public class GraphState implements Serializable {
                 } else {
                     adjacencyList.remove(timestamp);
                 }
+                removalTimeCounter.getAndAdd((System.currentTimeMillis()-timestamp));
             }
 
             if(timestamp == nextOutputTimestamp.value()) {
+                System.out.println(ctx.getCurrentKey()+"\t :State removal "+
+                        "took \t"+removalTimeCounter.get());
+                removalTimeCounter.set(0);
                 edgeCountSinceTimestamp.update(0);
                 long newtimestamp = timestamp;
                 if(newtimestamp == lastTimestamp.value()) {
@@ -862,14 +875,13 @@ public class GraphState implements Serializable {
                 }
                 lastTimestamp.update(newtimestamp);
                 if(slide != null) {
-                    System.out.println("We are now triggering output");
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
                     out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp + windowSize));
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
                         out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, 0L, Long.MAX_VALUE));
-                        System.out.println("Partition "+ctx.getCurrentKey()+" its last batchtimestamp was "+timestamps.peekLast());
+                        System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                     } else {
                         nextOutputTimestamp.update(timestamp+10000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
@@ -887,9 +899,11 @@ public class GraphState implements Serializable {
         private transient MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> adjacencyList;
         private transient ValueState<Long> nextOutputTimestamp;
         private static final LinkedList<Long> timestamps = new LinkedList<>();
+        private AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
+            System.out.println("Thread \t"+Thread.currentThread().getId()+"\t opens at: \t"+System.currentTimeMillis());
             MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> descriptor = new MapStateDescriptor<>(
                     "adjacencyList",
                     TypeInformation.of(new TypeHint<Long>() {
@@ -926,9 +940,6 @@ public class GraphState implements Serializable {
 
             if(lastTimestamp.value() == null) {
                 lastTimestamp.update(firstTimestamp);
-                collector.collect("Started building state at "+firstTimestamp);
-                //myLogWriter.appendLine("First element while building state in partition "+context.getCurrentKey()+
-                //        " at "+context.timerService().currentProcessingTime());
             }
 
             if(edgeCountSinceTimestamp.value() == batchSize) {
@@ -989,9 +1000,13 @@ public class GraphState implements Serializable {
                 } else {
                     adjacencyList.remove(timestamp);
                 }
+                removalTimeCounter.getAndAdd((System.currentTimeMillis()-timestamp));
             }
 
             if(timestamp == nextOutputTimestamp.value()) {
+                System.out.println(ctx.getCurrentKey()+"\t :State removal "+
+                        "took \t"+removalTimeCounter.get());
+                removalTimeCounter.set(0);
                 edgeCountSinceTimestamp.update(0);
                 long newtimestamp = timestamp;
                 if(newtimestamp == lastTimestamp.value()) {
@@ -1003,30 +1018,25 @@ public class GraphState implements Serializable {
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
                     long current = ctx.timerService().currentProcessingTime();
-                    out.collect("We started the onTimer "+(current-timestamp)+ " ms too late. If this is big, consider " +
+                    out.collect(ctx.getCurrentKey()+"\t :We started the onTimer \t"+(current-timestamp)+ " \t ms too late. If this is big, consider " +
                             "increasing slide, decreasing input rate or using a faster algorithm.");
                     try {
-                        out.collect("Result at time '" + timestamp + " : " +
+                        out.collect(ctx.getCurrentKey()+"\t :AlgResult at time '" + timestamp + " : " +
                                 algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
                                         timestamp, timestamp + windowSize));
                     } catch (Exception e) {
                         System.out.println(e);
                     }
-                    out.collect("This took " + (ctx.timerService().currentProcessingTime() - current) + " ms");
+                    out.collect(ctx.getCurrentKey()+"\t :Alg took \t" + (ctx.timerService().currentProcessingTime() - current) + "\t ms");
 
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
-                        out.collect("Last batch started at "+timestamps.peekLast());
-                        //myLogWriter.appendLine("Last batch in "+ctx.getCurrentKey()+" started at "+timestamps.peekLast());
-                        //Shouldnt need this.
-                        try {
-                            out.collect("Result at time '" + timestamp + " : " +
+                        System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
+                        out.collect(ctx.getCurrentKey()+"\t :AlgResult at time \t" + timestamp + " \t: " +
                                     algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
                                             0, Long.MAX_VALUE));
-                        } catch (Exception e) {
-                            System.out.println(e);
-                        }
-                        out.collect("This took " + (ctx.timerService().currentProcessingTime() - timestamp) + " ms");
+                        out.collect(ctx.getCurrentKey()+"\t :Alg took \t" + (ctx.timerService().currentProcessingTime() - timestamp));
+                        myCounter.incrementAlgResults();
                     } else {
                         nextOutputTimestamp.update(timestamp+10000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
@@ -1036,270 +1046,7 @@ public class GraphState implements Serializable {
         }
     }
 
-    public static class CountTriangles extends KeyedProcessFunction<Integer, TemporalEdge, String> {
-
-        private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
-        private final Long window;
-        private final Long slide;
-        private transient ValueState<Long> lastOutput;
-        private transient ValueState<Integer> triangleCount;
-        private transient ValueState<Integer> edgeCountSinceTimestamp;
-        private transient ValueState<Long> lastTimestamp;
-
-        public CountTriangles(long window, long slide) {
-            this.slide = slide;
-            this.window = window;
-        }
-
-        @Override
-        public void open(Configuration parameters) throws Exception {
-            MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
-                    "sortedEdgeList",
-                    TypeInformation.of(new TypeHint<GradoopId>() {
-                    }),
-                    TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
-                    })
-            );
-            ELdescriptor.setQueryable("sortedEdgeList");
-            sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
-            ValueStateDescriptor<Long> descriptor = new ValueStateDescriptor<Long>(
-                    "lastOutputTime", Long.class);
-            lastOutput = getRuntimeContext().getState(descriptor);
-            ValueStateDescriptor<Integer> descriptor1 = new ValueStateDescriptor<Integer>(
-                    "triangleCount", Integer.class);
-            triangleCount = getRuntimeContext().getState(descriptor1);
-            ValueStateDescriptor<Integer> descriptor2 = new ValueStateDescriptor<Integer>(
-                    "edgeCountSinceTimestamp", Integer.class);
-            edgeCountSinceTimestamp = getRuntimeContext().getState(descriptor2);
-            ValueStateDescriptor<Long> descriptor3 = new ValueStateDescriptor<Long>(
-                    "lastTimestamp", Long.class);
-            lastTimestamp = getRuntimeContext().getState(descriptor3);
-        }
-
-        @Override
-        public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
-            while(!QS.isInitilized()) {
-                Thread.sleep(100);
-            }
-            if(triangleCount.value() == null) {
-                triangleCount.update(0);
-            }
-            if(edgeCountSinceTimestamp.value() == null) {
-                edgeCountSinceTimestamp.update(0);
-            }
-            if(lastTimestamp.value() == null) {
-                lastTimestamp.update(context.timerService().currentProcessingTime());
-            }
-            long currentTime = lastTimestamp.value();
-            if(lastOutput.value() == null) {
-                lastOutput.update(currentTime);
-                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
-                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide+slide);
-            }
-            while(currentTime>(lastOutput.value()+slide)) {
-                lastOutput.update(lastOutput.value()+slide);
-                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
-                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide+slide);
-                currentTime = context.timerService().currentProcessingTime();
-                lastTimestamp.update(currentTime);
-                edgeCountSinceTimestamp.update(0);
-            }
-            edgeCountSinceTimestamp.update(edgeCountSinceTimestamp.value()+1);
-            if(edgeCountSinceTimestamp.value() == 50) {
-                edgeCountSinceTimestamp.update(0);
-                currentTime = context.timerService().currentProcessingTime();
-                if(currentTime == lastTimestamp.value()) {
-                    currentTime++;
-                }
-                lastTimestamp.update(currentTime);
-            }
-
-            edge.setValidTo(currentTime+window);
-            GradoopId source = edge.getSourceId();
-            GradoopId target = edge.getTargetId();
-            try {
-                sortedEdgeList.get(source).put(target, edge);
-            } catch (NullPointerException e) {
-                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
-                toPut.put(target, edge);
-                sortedEdgeList.put(source, toPut);
-            }
-            try {
-                sortedEdgeList.get(target).put(source, edge);
-            } catch (NullPointerException e) {
-                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
-                toPut.put(source, edge);
-                sortedEdgeList.put(target, toPut);
-            }
-        }
-
-        @Override
-        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
-            AtomicInteger triangleCounter = new AtomicInteger(0);
-            for(GradoopId srcId : sortedEdgeList.keys()) {
-                GradoopId[] neighbours = sortedEdgeList.get(srcId).keySet().toArray(GradoopId[]::new);
-                for(int i = 0; i < neighbours.length; i++) {
-                    GradoopId neighbour1 = neighbours[i];
-                    if(neighbour1.compareTo(srcId) > 0 && sortedEdgeList.get(srcId).get(neighbour1).getValidTo() > timestamp) {
-                        for(int j = 0; j < neighbours.length; j++) {
-                            GradoopId neighbour2 = neighbours[j];
-                            if(i != j && neighbour2.compareTo(neighbour1) > 0 && sortedEdgeList.get(srcId).get(neighbour2).getValidTo() > timestamp) {
-                                try {
-                                    TemporalEdge edge = sortedEdgeList.get(neighbour1).get(neighbour2);
-                                    if(edge.getValidTo() > timestamp) {
-                                        triangleCounter.getAndIncrement();
-                                    }
-                                } catch (NullPointerException e) {
-                                    try {
-                                        TemporalEdge edge = sortedEdgeList.get(neighbour2).get(neighbour1);
-                                        if (edge.getValidTo() > timestamp) {
-                                            triangleCounter.getAndIncrement();
-                                        }
-                                    } catch (NullPointerException ignored) {}
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            out.collect("We found "+triangleCounter.get()+" triangles at timestamp: "+timestamp
-            +". This timer took "+(ctx.timerService().currentProcessingTime()-timestamp)+" ms.");
-        }
-    }
-
-    public static class CountingVertices extends KeyedProcessFunction<Integer, TemporalEdge, String> {
-
-        private transient MapState<GradoopId, HashMap<GradoopId, TemporalEdge>> sortedEdgeList;
-        private final Long window;
-        private final Long slide;
-        private transient ValueState<Long> lastOutput;
-        private transient ValueState<Long> lastTimerPull;
-        private transient ValueState<Integer> edgesSinceLastTimer;
-        private transient MapState<GradoopId, Integer> vertexDegree;
-
-        public CountingVertices(Long window, Long slide) {
-            this.window = window;
-            this.slide = slide;
-        }
-
-        @Override
-        public void open(Configuration parameters) throws Exception {
-            MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> ELdescriptor = new MapStateDescriptor<>(
-                    "sortedEdgeList",
-                    TypeInformation.of(new TypeHint<GradoopId>() {
-                    }),
-                    TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
-                    })
-            );
-            ELdescriptor.setQueryable("sortedEdgeList");
-            sortedEdgeList = getRuntimeContext().getMapState(ELdescriptor);
-            ValueStateDescriptor<Long> descriptor = new ValueStateDescriptor<Long>(
-                    "lastOutputTime", Long.class);
-            lastOutput = getRuntimeContext().getState(descriptor);
-            ValueStateDescriptor<Long> descriptor1 = new ValueStateDescriptor<Long>(
-                    "lastTimerPull", Long.class);
-            lastTimerPull = getRuntimeContext().getState(descriptor1);
-            ValueStateDescriptor<Integer> descriptor2 = new ValueStateDescriptor<Integer>(
-                    "edgesSinceTimer", Integer.class);
-            edgesSinceLastTimer = getRuntimeContext().getState(descriptor2);
-            MapStateDescriptor<GradoopId, Integer> descriptor3 = new MapStateDescriptor<GradoopId, Integer>(
-                    "vertexDegree", GradoopId.class, Integer.class);
-            descriptor3.setQueryable("vertexDegree");
-            vertexDegree = getRuntimeContext().getMapState(descriptor3);
-
-        }
-
-        @Override
-        public void processElement(TemporalEdge edge, Context context, Collector<String> collector) throws Exception {
-            if(lastOutput.value() == null) {
-                while (!QS.isInitilized()) {
-                    Thread.sleep(100);
-                }
-                long currentTime = context.timerService().currentProcessingTime();
-                lastOutput.update(currentTime);
-                lastTimerPull.update(currentTime);
-                edgesSinceLastTimer.update(0);
-                //lastOutput.update(context.timestamp());
-                context.timerService().registerProcessingTimeTimer(lastOutput.value() + slide);
-                context.timerService().registerProcessingTimeTimer(lastOutput.value() + slide + slide);
-
-            }
-            edgesSinceLastTimer.update(edgesSinceLastTimer.value()+1);
-            if(edgesSinceLastTimer.value() > 50) {
-                long newtimestamp = context.timerService().currentProcessingTime();
-                if(newtimestamp == lastTimerPull.value()) {
-                    newtimestamp++;
-                }
-                lastTimerPull.update(newtimestamp);
-                edgesSinceLastTimer.update(0);
-            }
-            long currentTime = lastTimerPull.value();
-
-            while(currentTime>(lastOutput.value()+slide)) {
-                lastOutput.update(lastOutput.value()+slide);
-                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide);
-                context.timerService().registerProcessingTimeTimer(lastOutput.value()+slide+slide);
-            }
-
-            edge.setValidTo(currentTime+window);
-            GradoopId source = edge.getSourceId();
-            GradoopId target = edge.getTargetId();
-            int oldDegree = 0;
-            try {
-                sortedEdgeList.get(source).put(target, edge);
-                oldDegree = vertexDegree.get(source);
-            } catch (NullPointerException e) {
-                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
-                toPut.put(target, edge);
-                sortedEdgeList.put(source, toPut);
-            }
-            vertexDegree.put(source, oldDegree+1);
-            oldDegree = 0;
-            try {
-                sortedEdgeList.get(target).put(source, edge);
-                oldDegree = vertexDegree.get(target);
-            } catch (NullPointerException e) {
-                HashMap<GradoopId, TemporalEdge> toPut = new HashMap<>();
-                toPut.put(source, edge);
-                sortedEdgeList.put(target, toPut);
-            }
-            vertexDegree.put(target, oldDegree+1);
-        }
-
-        @Override
-        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
-            List<GradoopId> srcVertices =
-                    StreamSupport.stream(vertexDegree.keys().spliterator(), false)
-                            .collect(Collectors.toList());
-            int currentKey = ctx.getCurrentKey();
-            out.collect("Local partition "+currentKey+" had "+ srcVertices.size()+" srcVertices at time: "+timestamp);
-            HashSet<GradoopId> distinct = new HashSet<>();
-            distinct.addAll(srcVertices);
-            for(int key : keys) {
-                if(key != currentKey) {
-                    int tries = 0;
-                    int maxtries = 10;
-                    while(tries < maxtries) {
-                        try {
-                            MapState<GradoopId, Integer> state = QS.getVertexDegree(key);
-                            List<GradoopId> externalSrcVertices = StreamSupport.stream(state.keys().spliterator(), false)
-                                    .collect(Collectors.toList());
-                            out.collect("External partition: "+key+" had: "+externalSrcVertices.size()+" srcVertices at time: "
-                                    +timestamp);
-                            distinct.addAll(externalSrcVertices);
-                            tries = maxtries;
-                        } catch (Exception e) {
-                            tries++;
-                            System.out.println(tries);
-                            //Thread.sleep(100);
-                        }
-                    }
-                }
-            }
-            out.collect("Together the partitions have "+distinct.size()+" distinct vertices.");
-        }
-    }
     public KeyedStream<TemporalEdge, Integer> getData() {
-        return this.input;
+        return input;
     }
 }
