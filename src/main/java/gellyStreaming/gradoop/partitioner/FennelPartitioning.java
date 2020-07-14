@@ -26,9 +26,11 @@ public class FennelPartitioning implements Serializable {
 
     public FennelPartitioning() {
         this.FennelID = 0;
+
     }
 
-    private transient Partitioner<Long> partitioner;
+    private Partitioner<Long> partitioner;
+    //private final Partitioner<Long> partitioner1 = partitioner;
 
     public DataStream<Tuple2<Edge<Long, String>, Integer>> getFennelPartitionedEdges(
             StreamExecutionEnvironment env,
@@ -39,8 +41,10 @@ public class FennelPartitioning implements Serializable {
         DataStream<Tuple2<Long, List<Long>>> input = getVertices(env, inputPath);
         CustomKeySelector2<Long, Long> keySelector = new CustomKeySelector2<>(0);
         partitioner = new FennelPartitioner<>(keySelector, numberOfPartitions, vertexCount, edgeCount);
+        final Partitioner<Long> partitioner1 = partitioner;
         DataStream<Tuple2<Edge<Long, String>, Integer>> stream =  input
                 .flatMap(new FlatMapFunction<Tuple2<Long, List<Long>>, Tuple2<Edge<Long, String>, Integer>>() {
+
                     @Override
                     public void flatMap(Tuple2<Long, List<Long>> vertexList, Collector<Tuple2<Edge<Long, String>, Integer>> collector) throws Exception {
                         Long keyEdge = keySelector.getKey(vertexList);
@@ -48,19 +52,20 @@ public class FennelPartitioning implements Serializable {
                             System.out.println("Error");
                         }
                         Long srcId = vertexList.f0;
-                        if(partitioner == null) {
+                        if(partitioner1 == null) {
                             System.out.println("partitioner is null");
                         }
                         if(keyEdge == null) {
                             System.out.println("keyedge is null");
                         }
-                        int machineId = partitioner.partition(keyEdge, numberOfPartitions);
+                        int machineId = partitioner1.partition(keyEdge, numberOfPartitions);
                         for(Long neighbour : vertexList.f1) {
                             collector.collect(Tuple2.of(new Edge<Long, String>(srcId, neighbour, ""),machineId));
                         }
                     }
                 });
         env.setParallelism(numberOfPartitions);
+        partitioner = partitioner1;
         return stream.keyBy(new KeySelector<Tuple2<Edge<Long, String>, Integer>, Object>() {
                     @Override
                     public Object getKey(Tuple2<Edge<Long, String>, Integer> edgeIntegerTuple2) throws Exception {
@@ -115,12 +120,12 @@ public class FennelPartitioning implements Serializable {
 
     private class FennelPartitioner<K, EV> implements Serializable, Partitioner<K> {
         private final long serialVersionUID = 1L;
-        private final transient CustomKeySelector2<K, EV> keySelector;
+        private final CustomKeySelector2<K, EV> keySelector;
         private final double alpha;  //parameters for formula
         private final double gamma;
         private final double loadlimit;
-        private final transient StoredVertexPartitionState currentState;
-        private final transient int[] keys;
+        private final StoredVertexPartitionState currentState;
+        private final int[] keys;
 
 
         public FennelPartitioner(CustomKeySelector2<K, EV> keySelector, int numPartitions, int numVertices, int numEdges) {
