@@ -25,3 +25,7 @@ target/classes/ER-20
 Results/
 
 target/
+
+*.jar
+
+flink-1\.11\.0/

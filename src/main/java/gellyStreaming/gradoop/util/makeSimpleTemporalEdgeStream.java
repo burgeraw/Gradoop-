@@ -16,16 +16,17 @@ import org.gradoop.common.model.impl.properties.Properties;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
-public class makeSimpleTemporalEdgeStream {
+public class makeSimpleTemporalEdgeStream implements Serializable {
 
-    private static boolean cont;
-    public static FennelPartitioning fennel;
-    public static SourceFunction<TemporalEdge> infinite;
+    private transient boolean cont;
+    public transient FennelPartitioning fennel;
+    public transient SourceFunction<TemporalEdge> infinite;
 
-    public static SimpleTemporalEdgeStream getVertexPartitionedStream(StreamExecutionEnvironment env,
+    public SimpleTemporalEdgeStream getVertexPartitionedStream(StreamExecutionEnvironment env,
                                                                       Integer numberOfPartitions,
                                                                       String filepath,
                                                                       Integer vertexCount,
@@ -93,7 +94,7 @@ public class makeSimpleTemporalEdgeStream {
         return new SimpleTemporalEdgeStream(finalEdges, env, graphId);
     }
 
-    public static SimpleTemporalEdgeStream getEdgePartitionedStream(StreamExecutionEnvironment env,
+    public SimpleTemporalEdgeStream getEdgePartitionedStream(StreamExecutionEnvironment env,
                                                                     Integer numberOfPartitions,
                                                                     String filepath,
                                                                     Boolean makeInf) {
@@ -165,9 +166,13 @@ public class makeSimpleTemporalEdgeStream {
         return new SimpleTemporalEdgeStream(finalEdges, env, graphId);
     }
 
-    public static void stopInfiniteStream() {
+    public void stopInfiniteStream() {
         cont = false;
         infinite.cancel();
+    }
+
+    public FennelPartitioning getFennel() {
+        return fennel;
     }
 
 }

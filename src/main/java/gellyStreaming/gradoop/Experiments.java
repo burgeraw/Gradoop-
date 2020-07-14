@@ -25,6 +25,11 @@ public class Experiments {
     // Can be set to a value so that the program exits, and the infinite stream stops.
     public static long valueToReach = -1;
     public static int algValueToReach = -1;
+    public static transient makeSimpleTemporalEdgeStream stream = new makeSimpleTemporalEdgeStream();
+
+    public makeSimpleTemporalEdgeStream getStream() {
+        return stream;
+    }
 
     public static void Experiment1a(String filepath,
                                     String numberOfEdges,
@@ -43,23 +48,24 @@ public class Experiments {
         System.setOut(logStream);
         System.out.println("Started job at \t" + System.currentTimeMillis());
         //For local execution
-        Configuration config = new Configuration();
-        config.set(DeploymentOptions.ATTACHED, false);
-        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        //Configuration config = new Configuration();
+        //config.set(DeploymentOptions.ATTACHED, false);
+        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
 
         // For cluster execution
-        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream edgeStream;
+        stream = new makeSimpleTemporalEdgeStream();
         valueToReach = Long.parseLong(numberOfEdges);
         if (edgeOrVertexPartitioner.equals("vertex")) {
-            edgeStream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(
+            edgeStream = stream.getVertexPartitionedStream(
                     env, numberOfPartitions, filepath,
                     Integer.parseInt(numberOfVertices), Integer.parseInt(numberOfEdges), false);
         } else {
-            edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
+            edgeStream = stream.getEdgePartitionedStream(
                     env, numberOfPartitions, filepath, false);
         }
         env.setParallelism(numberOfPartitions);
@@ -93,21 +99,22 @@ public class Experiments {
         System.setOut(logStream);
         System.out.println("Started job at \t" + System.currentTimeMillis());
         // For local execution.
-        Configuration config = new Configuration();
-        config.set(DeploymentOptions.ATTACHED, false);
-        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        //Configuration config = new Configuration();
+        //config.set(DeploymentOptions.ATTACHED, false);
+        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         // For cluster execution.
-        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+        makeSimpleTemporalEdgeStream stream = new makeSimpleTemporalEdgeStream();
         SimpleTemporalEdgeStream edgeStream;
         valueToReach = Long.parseLong(numberOfEdges);
         if (edgeOrVertexPartitioner.equals("vertex")) {
-            edgeStream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(env, numberOfPartitions, filepath,
+            edgeStream = stream.getVertexPartitionedStream(env, numberOfPartitions, filepath,
                     Integer.parseInt(numberOfVertices), Integer.parseInt(numberOfEdges), false);
         } else {
-            edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
+            edgeStream = stream.getEdgePartitionedStream(
                     env, numberOfPartitions, filepath, false);
         }
         env.setParallelism(numberOfPartitions);
@@ -140,16 +147,16 @@ public class Experiments {
         System.setOut(logStream);
         System.out.println("Started job at: \t" + System.currentTimeMillis());
         // For local execution.
-        Configuration config = new Configuration();
-        config.set(DeploymentOptions.ATTACHED, false);
-        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        //Configuration config = new Configuration();
+        //config.set(DeploymentOptions.ATTACHED, false);
+        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
         // For cluster execution.
-        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         valueToReach = Long.parseLong(numberOfEdges);
-        SimpleTemporalEdgeStream edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
+        SimpleTemporalEdgeStream edgeStream = new makeSimpleTemporalEdgeStream().getEdgePartitionedStream(
                     env, numberOfPartitions, filepath, false);
         env.setParallelism(numberOfPartitions);
         QueryState QS = new QueryState();
@@ -188,13 +195,13 @@ public class Experiments {
         System.out.println("Started job at: \t" + System.currentTimeMillis());
 
         // For local execution.
-        Configuration config = new Configuration();
-        config.set(DeploymentOptions.ATTACHED, false);
-        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        //Configuration config = new Configuration();
+        //config.set(DeploymentOptions.ATTACHED, false);
+        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
 
         // For cluster execution.
-        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
@@ -203,12 +210,13 @@ public class Experiments {
         SimpleTemporalEdgeStream edgeStream;
         env.setParallelism(numberOfPartitions);
         Algorithm alg;
+        makeSimpleTemporalEdgeStream stream = new makeSimpleTemporalEdgeStream();
         if(edgeOrVertexPartitioner.equals("edge")) {
-            edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
+            edgeStream = stream.getEdgePartitionedStream(
                     env, numberOfPartitions, filepath, true);
             alg = new TriangleCountingALRetrieveAllState();
         } else if(edgeOrVertexPartitioner.equals("vertex")) {
-            edgeStream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(
+            edgeStream = stream.getVertexPartitionedStream(
                     env, numberOfPartitions, filepath, Integer.parseInt(numberOfVertices),
                     Integer.parseInt(numberOfEdges), true);
             switch (algorithmGranularity) {
@@ -216,11 +224,11 @@ public class Experiments {
                     alg = new TriangleCountingALRetrieveAllState();
                     break;
                 case "edge":
-                    alg = new TriangleCountingFennelALRetrieveEdge(makeSimpleTemporalEdgeStream.fennel,
+                    alg = new TriangleCountingFennelALRetrieveEdge(stream.fennel,
                             Integer.parseInt(QSbatchSize), (withCaching.equals("true")));
                     break;
                 case "vertex":
-                    alg = new TriangleCountingFennelALRetrieveVertex(makeSimpleTemporalEdgeStream.fennel,
+                    alg = new TriangleCountingFennelALRetrieveVertex(stream.fennel,
                             Integer.parseInt(QSbatchSize), (withCaching.equals("true")));
                     break;
                 default:
@@ -255,14 +263,16 @@ public class Experiments {
             //Experiment1a("src/main/resources/email-Eu-core.txt", "25571", "1",
             //        "sortedEL", "edge", null);
             //Experiment1b("8", "1", "src/main/resources/email-Eu-core.txt",
-            //        "EL", "edge", null, "25571");
+             //       "EL", "edge", null, "25571");
+            Experiment1b("8","1","resources/AL/email-Eu-core","AL",
+                    "vertex", "1005", "32770");
             //Experiment2("100", "1", "src/main/resources/email-Eu-core.txt",
             //        "AL", "lazy", "25571");
             //Experiment2("100", "1", "src/main/resources/email-Eu-core.txt",
             //        "AL", "active", "25571");
-            Experiment3a("edge", "vertex", "true", "100000",
-                    "resources/AL/email-Eu-core", "1", "1005", "32770",
-                    "true");
+            //Experiment3a("edge", "vertex", "true", "100000",
+            //        "resources/AL/email-Eu-core", "1", "1005", "32770",
+            //        "false");
 
         } else {
             switch (args[0]) {

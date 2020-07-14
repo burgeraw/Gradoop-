@@ -12,11 +12,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class StoredVertexPartitionState implements Serializable{
 
-    public final HashMap<Long, StoredVertex> record_map;
+    public final transient HashMap<Long, StoredVertex> record_map;
     private final AtomicInteger[] machines_load_edges;
     private final AtomicInteger[] machines_load_vertices;
 
-    int MAX_LOAD;
+    private transient int MAX_LOAD;
 
 
     public StoredVertexPartitionState(int k) {

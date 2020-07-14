@@ -22,13 +22,13 @@ import java.util.*;
  */
 public class FennelPartitioning implements Serializable {
 
-    private int FennelID;
+    private final int FennelID;
 
     public FennelPartitioning() {
         this.FennelID = 0;
     }
 
-    private static Partitioner<Long> partitioner;
+    private transient Partitioner<Long> partitioner;
 
     public DataStream<Tuple2<Edge<Long, String>, Integer>> getFennelPartitionedEdges(
             StreamExecutionEnvironment env,
@@ -48,6 +48,12 @@ public class FennelPartitioning implements Serializable {
                             System.out.println("Error");
                         }
                         Long srcId = vertexList.f0;
+                        if(partitioner == null) {
+                            System.out.println("partitioner is null");
+                        }
+                        if(keyEdge == null) {
+                            System.out.println("keyedge is null");
+                        }
                         int machineId = partitioner.partition(keyEdge, numberOfPartitions);
                         for(Long neighbour : vertexList.f1) {
                             collector.collect(Tuple2.of(new Edge<Long, String>(srcId, neighbour, ""),machineId));
@@ -72,7 +78,7 @@ public class FennelPartitioning implements Serializable {
     }
 
 
-    public static DataStream<Tuple2<Long, List<Long>>> getVertices(StreamExecutionEnvironment env, String inputPath) throws IOException {
+    public DataStream<Tuple2<Long, List<Long>>> getVertices(StreamExecutionEnvironment env, String inputPath) {
 
         return env.readTextFile(inputPath)
                 .filter(new FilterFunction<String>() {
@@ -107,14 +113,14 @@ public class FennelPartitioning implements Serializable {
 
     ///////code for partitioner/////////
 
-    private static class FennelPartitioner<K, EV> implements Serializable, Partitioner<K> {
-        private static final long serialVersionUID = 1L;
-        CustomKeySelector2<K, EV> keySelector;
+    private class FennelPartitioner<K, EV> implements Serializable, Partitioner<K> {
+        private final long serialVersionUID = 1L;
+        private final transient CustomKeySelector2<K, EV> keySelector;
         private final double alpha;  //parameters for formula
         private final double gamma;
         private final double loadlimit;
-        private StoredVertexPartitionState currentState;
-        private int[] keys;
+        private final transient StoredVertexPartitionState currentState;
+        private final transient int[] keys;
 
 
         public FennelPartitioner(CustomKeySelector2<K, EV> keySelector, int numPartitions, int numVertices, int numEdges) {

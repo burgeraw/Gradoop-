@@ -37,19 +37,19 @@ import java.util.stream.StreamSupport;
 
 public class GraphState implements Serializable {
 
-    private static KeyedStream<TemporalEdge, Integer> input;
-    private static Integer[] keys;
-    private static QueryState QS;
-    private static boolean lazyPurging;
-    private static int batchSize;
-    private static Long windowSize;
-    private static Long slide;
-    private SingleOutputStreamOperator<Tuple4<Integer, Integer[], Long, Long>> decoupledOutput = null;
-    private SingleOutputStreamOperator<String> algorithmOutput = null;
-    private static Algorithm algorithm;
-    private static long firstTimestamp;
-    public static JobID jobID;
-    private static globalCounter myCounter;
+    private final transient KeyedStream<TemporalEdge, Integer> input;
+    private final Integer[] keys;
+    private final transient QueryState QS;
+    private final boolean lazyPurging;
+    private final int batchSize;
+    private final Long windowSize;
+    private final Long slide;
+    private transient SingleOutputStreamOperator<Tuple4<Integer, Integer[], Long, Long>> decoupledOutput = null;
+    private transient SingleOutputStreamOperator<String> algorithmOutput = null;
+    private final Algorithm algorithm;
+    private final long firstTimestamp;
+    public transient JobID jobID;
+    private final globalCounter myCounter;
 
 
     public GraphState(QueryState QS,
@@ -61,20 +61,20 @@ public class GraphState implements Serializable {
                       Boolean lazyPurging,
                       int batchSize,
                       Algorithm algorithm) {
-        GraphState.QS = QS;
-        GraphState.input = input;
-        GraphState.windowSize = windowSize;
-        GraphState.slide = slide;
+        this.QS = QS;
+        this.input = input;
+        this.windowSize = windowSize;
+        this.slide = slide;
         KeyGen keyGenerator = new KeyGen(numPartitions,
                 KeyGroupRangeAssignment.computeDefaultMaxParallelism(numPartitions));
-        keys = new Integer[numPartitions];
+        this.keys = new Integer[numPartitions];
         for (int i = 0; i < numPartitions; i++)
-            keys[i] = keyGenerator.next(i);
-        GraphState.lazyPurging = lazyPurging;
-        GraphState.batchSize = batchSize;
-        GraphState.algorithm = algorithm;
-        GraphState.firstTimestamp = System.currentTimeMillis()+1000L;
-        GraphState.myCounter = new globalCounter(Experiments.valueToReach, Experiments.algValueToReach);
+            this.keys[i] = keyGenerator.next(i);
+        this.lazyPurging = lazyPurging;
+        this.batchSize = batchSize;
+        this.algorithm = algorithm;
+        this.firstTimestamp = System.currentTimeMillis()+1000L;
+        this.myCounter = new globalCounter(Experiments.valueToReach, Experiments.algValueToReach);
 
         if (algorithm == null) {
             switch (strategy) {
@@ -156,14 +156,14 @@ public class GraphState implements Serializable {
 
 
     // Sorted EL decoupled
-    public static class SortedELDecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple4<Integer, Integer[], Long, Long>> {
+    public class SortedELDecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple4<Integer, Integer[], Long, Long>> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, HashMap<GradoopId, List<Tuple2<GradoopId, TemporalEdge>>>> sortedEdgeList;
         private transient ValueState<Long> nextOutputTimestamp;
-        private static final LinkedList<Long> timestamps = new LinkedList<>();
-        private AtomicLong removalTimeCounter = new AtomicLong(0);
+        private final LinkedList<Long> timestamps = new LinkedList<>();
+        private final AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -313,14 +313,14 @@ public class GraphState implements Serializable {
     }
 
     // Sorted EL with Algorithm
-    public static class SortedELwithAlg extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+    public class SortedELwithAlg extends KeyedProcessFunction<Integer, TemporalEdge, String> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, HashMap<GradoopId, List<Tuple2<GradoopId, TemporalEdge>>>> sortedEdgeList;
         private transient ValueState<Long> nextOutputTimestamp;
-        private static final LinkedList<Long> timestamps = new LinkedList<>();
-        private AtomicLong removalTimeCounter = new AtomicLong(0);
+        private final LinkedList<Long> timestamps = new LinkedList<>();
+        private final AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -457,14 +457,14 @@ public class GraphState implements Serializable {
     }
 
     // Edge list decoupled.
-    public static class ELDecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple4<Integer, Integer[], Long, Long>> {
+    public class ELDecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple4<Integer, Integer[], Long, Long>> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, List<Tuple3<GradoopId, GradoopId, TemporalEdge>>> edgeList;
         private transient ValueState<Long> nextOutputTimestamp;
-        private static final LinkedList<Long> timestamps = new LinkedList<>();
-        private AtomicLong removalTimeCounter = new AtomicLong(0);
+        private final LinkedList<Long> timestamps = new LinkedList<>();
+        private final AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -581,11 +581,11 @@ public class GraphState implements Serializable {
                 if(slide != null) {
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                    out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp + windowSize));
+                    out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
-                        out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, 0L, Long.MAX_VALUE));
+                        out.collect(Tuple4.of(ctx.getCurrentKey(), keys, 0L, Long.MAX_VALUE));
                     } else {
                         nextOutputTimestamp.update(timestamp+10000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
@@ -596,14 +596,14 @@ public class GraphState implements Serializable {
     }
 
     // Edge list with Algorithm.
-    public static class ELwithAlg extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+    public class ELwithAlg extends KeyedProcessFunction<Integer, TemporalEdge, String> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, List<Tuple3<GradoopId, GradoopId, TemporalEdge>>> edgeList;
         private transient ValueState<Long> nextOutputTimestamp;
-        private static final LinkedList<Long> timestamps = new LinkedList<>();
-        private AtomicLong removalTimeCounter = new AtomicLong(0);
+        private final LinkedList<Long> timestamps = new LinkedList<>();
+        private final AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -750,14 +750,14 @@ public class GraphState implements Serializable {
     }
 
     // Adjacency List
-    public static class ALdecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple4<Integer, Integer[], Long, Long>> {
+    public class ALdecoupled extends KeyedProcessFunction<Integer, TemporalEdge, Tuple4<Integer, Integer[], Long, Long>> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> adjacencyList;
         private transient ValueState<Long> nextOutputTimestamp;
-        private static final LinkedList<Long> timestamps = new LinkedList<>();
-        private AtomicLong removalTimeCounter = new AtomicLong(0);
+        private final LinkedList<Long> timestamps = new LinkedList<>();
+        private final AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {
@@ -877,10 +877,10 @@ public class GraphState implements Serializable {
                 if(slide != null) {
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                    out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, timestamp, timestamp + windowSize));
+                    out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
                 } else {
                     if(timestamps.peekLast() < (timestamp-10000L)) {
-                        out.collect(Tuple4.of(ctx.getCurrentKey(), GraphState.keys, 0L, Long.MAX_VALUE));
+                        out.collect(Tuple4.of(ctx.getCurrentKey(), keys, 0L, Long.MAX_VALUE));
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                     } else {
                         nextOutputTimestamp.update(timestamp+10000L);
@@ -892,14 +892,14 @@ public class GraphState implements Serializable {
     }
 
     // Adjacency List with Algorithm onTimer
-    public static class ALwithAlg extends KeyedProcessFunction<Integer, TemporalEdge, String> {
+    public class ALwithAlg extends KeyedProcessFunction<Integer, TemporalEdge, String> {
 
         private transient ValueState<Integer> edgeCountSinceTimestamp;
         private transient ValueState<Long> lastTimestamp;
         private transient MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> adjacencyList;
         private transient ValueState<Long> nextOutputTimestamp;
-        private static final LinkedList<Long> timestamps = new LinkedList<>();
-        private AtomicLong removalTimeCounter = new AtomicLong(0);
+        private final LinkedList<Long> timestamps = new LinkedList<>();
+        private final AtomicLong removalTimeCounter = new AtomicLong(0);
 
         @Override
         public void open(Configuration parameters) throws Exception {

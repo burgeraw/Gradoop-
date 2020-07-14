@@ -1,13 +1,15 @@
 package gellyStreaming.gradoop.util;
 
+import gellyStreaming.gradoop.Experiments;
 import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 
+import java.io.Serializable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class globalCounter {
+public class globalCounter implements Serializable {
 
     private final long valueToReach;
     private final AtomicLong counter;
@@ -22,19 +24,18 @@ public class globalCounter {
     }
 
     public void increment() throws Exception {
-        if(valueToReach > 0 && counter.incrementAndGet() >= algValueToReach) {
+        if(valueToReach > 0 && counter.incrementAndGet() >= valueToReach) {
             System.out.println("Done putting all elements in state at: \t"+System.currentTimeMillis());
-            makeSimpleTemporalEdgeStream.stopInfiniteStream();
-            throw new Exception("We are done running. ");
+            Experiments.stream.stopInfiniteStream();
+            //throw new Exception("We are done running. ");
         }
-
     }
 
     public void incrementAlgResults() throws Exception {
         if(algValueToReach > 0 && counter2.incrementAndGet() >= algValueToReach) {
             System.out.println("Done with all algorithms at: \t"+System.currentTimeMillis());
-            makeSimpleTemporalEdgeStream.stopInfiniteStream();
-            throw new Exception("We are done running. ");
+            Experiments.stream.stopInfiniteStream();
+            //throw new Exception("We are done running. ");
         }
     }
 

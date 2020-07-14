@@ -9,10 +9,12 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.queryablestate.client.QueryableStateClient;
+import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.io.Serializable;
+import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -22,29 +24,19 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class QueryState implements Serializable {
 
-    private QueryableStateClient client;
-    private MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
-    private MapStateDescriptor<GradoopId, Integer> descriptor2;
-    private MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> descriptorAL;
-    private JobID jobID;
-    private boolean initilized = false;
+    private transient QueryableStateClient client;
+    private transient final MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
+    private transient final MapStateDescriptor<GradoopId, Integer> descriptor2;
+    private transient final MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> descriptorAL;
+    private transient JobID jobID;
+    private transient boolean initilized = false;
 
     public QueryState() {
         initilized = false;
-    }
-
-    public void initialize(JobID jobID) throws UnknownHostException {
-        //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-        String tmHostname = "127.0.0.1";
-        int proxyPort = 9069;
-        this.jobID = jobID;
-        initilized = true;
         ExecutionConfig executionConfig = new ExecutionConfig();
         executionConfig.registerPojoType(GradoopId.class);
         executionConfig.registerPojoType(TemporalEdge.class);
         executionConfig.registerPojoType(HashMap.class);
-
-        this.client = new QueryableStateClient(tmHostname, proxyPort);
         this.descriptor =
                 new MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>>(
                         "sortedEdgeList",
@@ -62,13 +54,25 @@ public class QueryState implements Serializable {
                         }).createSerializer(executionConfig)
                 );
         this.descriptorAL =
-                 new MapStateDescriptor<>(
-                "adjacencyList",
-                TypeInformation.of(new TypeHint<Long>() {
-                }).createSerializer(executionConfig),
-                TypeInformation.of(new TypeHint<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>() {
-                }).createSerializer(executionConfig)
-        );
+                new MapStateDescriptor<>(
+                        "adjacencyList",
+                        TypeInformation.of(new TypeHint<Long>() {
+                        }).createSerializer(executionConfig),
+                        TypeInformation.of(new TypeHint<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>() {
+                        }).createSerializer(executionConfig)
+                );
+    }
+
+
+    public void initialize(JobID jobID) throws UnknownHostException {
+        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
+        //String tmHostname = "127.0.0.1";
+        int proxyPort = 9069;
+        this.jobID = jobID;
+        initilized = true;
+
+        this.client = new QueryableStateClient(tmHostname, proxyPort);
+
         System.out.println("jobid: " + jobID.toString());
         System.out.println("tmHostname: " + tmHostname);
     }
