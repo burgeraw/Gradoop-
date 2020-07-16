@@ -7,7 +7,9 @@ import gellyStreaming.gradoop.algorithms.TriangleCountingFennelALRetrieveVertex;
 import gellyStreaming.gradoop.model.GraphState;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.model.SimpleTemporalEdgeStream;
+import gellyStreaming.gradoop.partitioner.FennelPartitioning;
 import gellyStreaming.gradoop.util.makeSimpleTemporalEdgeStream;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.DeploymentOptions;
 import org.apache.flink.configuration.QueryableStateOptions;
@@ -19,6 +21,7 @@ import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.net.UnknownHostException;
 
 public class Experiments {
 
@@ -69,7 +72,8 @@ public class Experiments {
                     env, numberOfPartitions, filepath, false);
         }
         env.setParallelism(numberOfPartitions);
-        QueryState QS = new QueryState();
+        QueryState QS = null;
+        QS = new QueryState();
         // By setting slide to null, we only get output once the full state is loaded.
         GraphState GS = edgeStream.buildState(QS, datastructure, 16000L, null,
                 numberOfPartitions, true, 1000,
@@ -118,7 +122,8 @@ public class Experiments {
                     env, numberOfPartitions, filepath, false);
         }
         env.setParallelism(numberOfPartitions);
-        QueryState QS = new QueryState();
+        QueryState QS = null;
+        QS = new QueryState();
         GraphState GS = edgeStream.buildState(QS, datastructure, 16000L, null,
                 numberOfPartitions, true, 1000,
                 null);
@@ -159,7 +164,8 @@ public class Experiments {
         SimpleTemporalEdgeStream edgeStream = new makeSimpleTemporalEdgeStream().getEdgePartitionedStream(
                     env, numberOfPartitions, filepath, false);
         env.setParallelism(numberOfPartitions);
-        QueryState QS = new QueryState();
+        QueryState QS = null;
+        QS = new QueryState();
         // Change window/slide to fit dataset. System exits when all data has been loaded in state, so not
         // all data also gets deleted.
         GraphState GS = edgeStream.buildState(QS, datastructure, 300L, 50L,
@@ -180,7 +186,7 @@ public class Experiments {
                                     String runNumber,
                                     String numberOfVertices,
                                     String numberOfEdges,
-                                    String fullyDecoupled) throws InstantiationException {
+                                    String fullyDecoupled) throws InstantiationException, UnknownHostException {
         File log = new File("Results/Experiment3a_granularity" + algorithmGranularity+"_"+edgeOrVertexPartitioner+
                 "_caching"+withCaching+ "_run" + runNumber+"_fullyDecoupled"+fullyDecoupled+".txt");
         int numberOfPartitions = 4; // local
@@ -191,17 +197,17 @@ public class Experiments {
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
-        System.setOut(logStream);
+        //System.setOut(logStream);
         System.out.println("Started job at: \t" + System.currentTimeMillis());
 
         // For local execution.
-        //Configuration config = new Configuration();
-        //config.set(DeploymentOptions.ATTACHED, false);
-        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        Configuration config = new Configuration();
+        config.set(DeploymentOptions.ATTACHED, false);
+        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
 
         // For cluster execution.
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
@@ -219,16 +225,17 @@ public class Experiments {
             edgeStream = stream.getVertexPartitionedStream(
                     env, numberOfPartitions, filepath, Integer.parseInt(numberOfVertices),
                     Integer.parseInt(numberOfEdges), true);
+            FennelPartitioning fennel  = stream.getFennel();
             switch (algorithmGranularity) {
                 case "state":
                     alg = new TriangleCountingALRetrieveAllState();
                     break;
                 case "edge":
-                    alg = new TriangleCountingFennelALRetrieveEdge(stream.fennel,
+                    alg = new TriangleCountingFennelALRetrieveEdge(fennel,
                             Integer.parseInt(QSbatchSize), (withCaching.equals("true")));
                     break;
                 case "vertex":
-                    alg = new TriangleCountingFennelALRetrieveVertex(stream.fennel,
+                    alg = new TriangleCountingFennelALRetrieveVertex(fennel,
                             Integer.parseInt(QSbatchSize), (withCaching.equals("true")));
                     break;
                 default:
@@ -237,7 +244,7 @@ public class Experiments {
         } else {
             throw new InstantiationException("Give either 'edge' or 'vertex' as input for vertexPartitioner. ");
         }
-        QueryState QS = new QueryState();
+        final QueryState QS = new QueryState();
         GraphState GS;
         if(fullyDecoupled.equals("true")) {
             GS = edgeStream.buildState(QS, "AL", 30000L, null,
@@ -252,27 +259,29 @@ public class Experiments {
         }
         try {
             JobClient jobClient = env.executeAsync();
-            GS.overWriteQS(jobClient.getJobID());
+            JobID jobID = jobClient.getJobID();
+            GS.overWriteQS(jobID);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public static void main(String[] args) throws InstantiationException {
+    public static void main(String[] args) throws InstantiationException, UnknownHostException {
         if (args.length == 0) {
             //Experiment1a("src/main/resources/email-Eu-core.txt", "25571", "1",
             //        "sortedEL", "edge", null);
             //Experiment1b("8", "1", "src/main/resources/email-Eu-core.txt",
              //       "EL", "edge", null, "25571");
-            Experiment1b("8","1","resources/AL/email-Eu-core","AL",
-                    "vertex", "1005", "32770");
+            //Experiment1b("8","1","resources/AL/email-Eu-core","AL",
+            //        "vertex", "1005", "32770");
             //Experiment2("100", "1", "src/main/resources/email-Eu-core.txt",
             //        "AL", "lazy", "25571");
             //Experiment2("100", "1", "src/main/resources/email-Eu-core.txt",
             //        "AL", "active", "25571");
-            //Experiment3a("edge", "vertex", "true", "100000",
-            //        "resources/AL/email-Eu-core", "1", "1005", "32770",
-            //        "false");
+
+            Experiment3a("edge", "vertex", "true", "100000",
+                        "resources/AL/email-Eu-core", "1", "1005", "32770",
+                        "false");
 
         } else {
             switch (args[0]) {
@@ -324,8 +333,12 @@ public class Experiments {
                     numberOfVertices = args[7];
                     numberOfEdges = args[8];
                     String fullyDecoupled = args[9];
-                    Experiment3a(algorithmGranularity, edgeOrVertexPartitioner, withCaching, QSbatchSize,
-                            filepath, runNumber, numberOfVertices, numberOfEdges, fullyDecoupled);
+                    try {
+                        Experiment3a(algorithmGranularity, edgeOrVertexPartitioner, withCaching, QSbatchSize,
+                                filepath, runNumber, numberOfVertices, numberOfEdges, fullyDecoupled);
+                    } catch (UnknownHostException e) {
+                        e.printStackTrace();
+                    }
             }
         }
     }

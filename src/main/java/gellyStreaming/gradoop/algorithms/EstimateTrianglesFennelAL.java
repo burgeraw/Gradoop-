@@ -4,6 +4,7 @@ import com.google.common.util.concurrent.AtomicDouble;
 import gellyStreaming.gradoop.util.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.partitioner.FennelPartitioning;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.gradoop.common.model.impl.id.GradoopId;
@@ -34,10 +35,9 @@ public class EstimateTrianglesFennelAL implements Algorithm<String, MapState<Lon
 
     @Override
     public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState,
-                              QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo)
-            throws Exception {
+                              QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo) {
         if (!QS.isInitilized()) {
-            throw new Exception("We don't have Queryable State initialized.");
+            System.out.println("no qs");
         }
         HashMap<Integer, HashMap<GradoopId, LinkedList<GradoopId>>> QSqueue = new HashMap<>();
         HashMap<GradoopId, HashSet<GradoopId>> cache = new HashMap<>();
@@ -62,27 +62,31 @@ public class EstimateTrianglesFennelAL implements Algorithm<String, MapState<Lon
 
         HashMap<GradoopId, HashSet<GradoopId>> localAdjacencyList = new HashMap<>();
 
-        for (long timestamp : localState.keys()) {
-            if (timestamp >= from && timestamp <= maxValidTo) {
-                for (GradoopId src : localState.get(timestamp).keySet()) {
-                    if (!localAdjacencyList.containsKey(src)) {
-                        localAdjacencyList.put(src, new HashSet<>());
-                    }
-                    if (localState.get(timestamp).get(src).keySet().size() < 1) {
-                        System.out.println(localState.get(timestamp).get(src).keySet().toString());
-                        System.out.println("src:" + src);
-                    }
+        try {
+            for (long timestamp : localState.keys()) {
+                if (timestamp >= from && timestamp <= maxValidTo) {
+                    for (GradoopId src : localState.get(timestamp).keySet()) {
+                        if (!localAdjacencyList.containsKey(src)) {
+                            localAdjacencyList.put(src, new HashSet<>());
+                        }
+                        if (localState.get(timestamp).get(src).keySet().size() < 1) {
+                            System.out.println(localState.get(timestamp).get(src).keySet().toString());
+                            System.out.println("src:" + src);
+                        }
 
-                    localAdjacencyList.get(src).addAll(localState.get(timestamp).get(src).keySet());
-                    if (src.toString().equals("000000000001370000000000")) {
-                        //System.out.println(localState.get(timestamp).get(src).keySet().toString());
-                        //System.out.println(localAdjacencyList.get(src).toString());
-                    }
-                    if (localAdjacencyList.get(src).size() < 1) {
-                        System.out.println("less than 1 for: " + src);
+                        localAdjacencyList.get(src).addAll(localState.get(timestamp).get(src).keySet());
+                        if (src.toString().equals("000000000001370000000000")) {
+                            //System.out.println(localState.get(timestamp).get(src).keySet().toString());
+                            //System.out.println(localAdjacencyList.get(src).toString());
+                        }
+                        if (localAdjacencyList.get(src).size() < 1) {
+                            System.out.println("less than 1 for: " + src);
+                        }
                     }
                 }
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
 
@@ -243,6 +247,11 @@ public class EstimateTrianglesFennelAL implements Algorithm<String, MapState<Lon
         String output = "In partition " + localKey + " we estimated " + result + " triangles";
         System.out.println(output);
         return output;
+    }
+
+    @Override
+    public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState, JobID jobID, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException {
+        return null;
     }
 }
 

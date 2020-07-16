@@ -2,6 +2,7 @@ package gellyStreaming.gradoop.algorithms;
 
 import gellyStreaming.gradoop.util.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.state.MapState;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
@@ -18,9 +19,9 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
 
     @Override
     public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState,
-                               QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws Exception {
+                               QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException {
         if (!QS.isInitilized()) {
-            throw new Exception("We don't have Queryable State initialized.");
+            System.out.println("no qs");
         }
         AtomicLong QStimer = new AtomicLong(0);
         HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
@@ -43,17 +44,21 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
             }
 
         }
-        for(long timestamp: localState.keys()) {
-            if(timestamp <= maxValidTo && timestamp>= from) {
-                for (GradoopId src : localState.get(timestamp).keySet()) {
-                    //if(GradoopIdUtil.getModulo(src, localKey, allKeys)) {
-                    if (!localAdjacencyList.containsKey(src)) {
-                        localAdjacencyList.put(src, new HashMap<>());
+        try {
+            for(long timestamp: localState.keys()) {
+                if(timestamp <= maxValidTo && timestamp>= from) {
+                    for (GradoopId src : localState.get(timestamp).keySet()) {
+                        //if(GradoopIdUtil.getModulo(src, localKey, allKeys)) {
+                        if (!localAdjacencyList.containsKey(src)) {
+                            localAdjacencyList.put(src, new HashMap<>());
+                        }
+                        localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
+                        //}
                     }
-                    localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
-                    //}
                 }
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         // Get rest of states.
         for(int key : allKeys) {
@@ -82,7 +87,11 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                         tries++;
                         Thread.sleep(10);
                         if (tries >= maxTries) {
-                            throw new Exception("We tried to get state " + maxTries + " times, but failed. "+e);
+                            try {
+                                throw new Exception("We tried to get state " + maxTries + " times, but failed. "+e);
+                            } catch (Exception ex) {
+                                ex.printStackTrace();
+                            }
                         }
                     }
                 }
@@ -126,5 +135,10 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
         }
         System.out.println("Time spend on QS in partition \t"+localKey+"\t:\t"+QStimer.get());
         return "In partition "+localKey+" we found "+triangleCount.get()+" triangles ";
+    }
+
+    @Override
+    public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState, JobID jobID, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException {
+        return null;
     }
 }

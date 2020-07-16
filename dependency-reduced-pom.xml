@@ -55,7 +55,7 @@
               </filters>
               <transformers>
                 <transformer>
-                  <mainClass>gellyStreaming.gradoop.Experiments</mainClass>
+                  <mainClass>gellyStreaming.gradoop.util.SimpleQS</mainClass>
                 </transformer>
               </transformers>
             </configuration>

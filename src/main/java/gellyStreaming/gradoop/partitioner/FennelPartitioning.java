@@ -35,7 +35,7 @@ public class FennelPartitioning implements Serializable {
     public DataStream<Tuple2<Edge<Long, String>, Integer>> getFennelPartitionedEdges(
             StreamExecutionEnvironment env,
             String inputPath, Integer numberOfPartitions,
-            int vertexCount, int edgeCount) throws IOException {
+            int vertexCount, int edgeCount) {
         System.out.println("Started Fennel partitioning at \t "+System.currentTimeMillis());
         env.setParallelism(1);
         DataStream<Tuple2<Long, List<Long>>> input = getVertices(env, inputPath);
@@ -118,13 +118,13 @@ public class FennelPartitioning implements Serializable {
 
     ///////code for partitioner/////////
 
-    private class FennelPartitioner<K, EV> implements Serializable, Partitioner<K> {
+    private static class FennelPartitioner<K, EV> implements Serializable, Partitioner<K> {
         private final long serialVersionUID = 1L;
         private final CustomKeySelector2<K, EV> keySelector;
         private final double alpha;  //parameters for formula
         private final double gamma;
         private final double loadlimit;
-        private final StoredVertexPartitionState currentState;
+        private static StoredVertexPartitionState currentState;
         private final int[] keys;
 
 

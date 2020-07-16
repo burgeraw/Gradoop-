@@ -3,6 +3,7 @@ package gellyStreaming.gradoop.algorithms;
 import gellyStreaming.gradoop.util.GradoopIdUtil;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.partitioner.FennelPartitioning;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.state.MapState;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
@@ -32,11 +33,9 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
 
     @Override
     public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState,
-                              QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo)
-            throws Exception {
+                              QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException {
         if (!QS.isInitilized()) {
             System.out.println("We don't have Queryable State initialized.");
-            throw new Exception("We don't have Queryable State initialized.");
         }
 
         // Queue : HashMap< remote partition key, Hashmap < ID to retrieve,
@@ -68,15 +67,19 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
         assert localState != null;
         // Get all relevant state together in one Hashmap.
         HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> localAdjacencyList = new HashMap<>();
-        for (long timestamp : localState.keys()) {
-            if (timestamp >= from && timestamp <= maxValidTo) {
-                for (GradoopId src : localState.get(timestamp).keySet()) {
-                    if (!localAdjacencyList.containsKey(src)) {
-                        localAdjacencyList.put(src, new HashMap<>());
+        try {
+            for (long timestamp : localState.keys()) {
+                if (timestamp >= from && timestamp <= maxValidTo) {
+                    for (GradoopId src : localState.get(timestamp).keySet()) {
+                        if (!localAdjacencyList.containsKey(src)) {
+                            localAdjacencyList.put(src, new HashMap<>());
+                        }
+                        localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
                     }
-                    localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
                 }
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
         // Iterate over vertex IDs and all pairs of its neighbours (which forms a wedge) and check if these
         // two neighbours are connected with an egde, which makes it a triangle.
@@ -165,7 +168,9 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
                                                 //} catch (NullPointerException ignored) {
                                                 } catch (Exception e) {
                                                     tries++;
-                                                    Thread.sleep(10);
+
+                                                        Thread.sleep(10);
+
                                                     if (tries == 10) {
                                                         System.out.println("ERROR, tried 10 times & failed using QS. " + e);
                                                     }
@@ -204,7 +209,9 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
                         break;
                     } catch (NullPointerException ignored) {
                     } catch (Exception e) {
-                        Thread.sleep(10);
+
+                            Thread.sleep(10);
+
                         tries++;
                         if (tries == 10) {
                             System.out.println("ERROR, tried 10 times & failed using QS. " + e);
@@ -217,5 +224,10 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
         System.out.println("Time spend on QS in partition \t"+localKey+"\t:\t"+QStimer.get());
         //System.out.println(output);
         return output;
+    }
+
+    @Override
+    public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState, JobID jobID, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException {
+        return null;
     }
 }

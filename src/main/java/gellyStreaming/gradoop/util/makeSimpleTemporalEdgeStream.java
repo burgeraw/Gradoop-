@@ -23,8 +23,11 @@ import java.util.Map;
 public class makeSimpleTemporalEdgeStream implements Serializable {
 
     private transient boolean cont;
-    public transient FennelPartitioning fennel;
-    public transient SourceFunction<TemporalEdge> infinite;
+    public FennelPartitioning fennel;
+
+    public makeSimpleTemporalEdgeStream() {
+        fennel = new FennelPartitioning();
+    }
 
     public SimpleTemporalEdgeStream getVertexPartitionedStream(StreamExecutionEnvironment env,
                                                                       Integer numberOfPartitions,
@@ -34,12 +37,9 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                                                                       Boolean makeInf)  {
         long currentTime = System.currentTimeMillis();
         cont = makeInf;
-        fennel = new FennelPartitioning();
         DataStream<Tuple2<Edge<Long, String>, Integer>> edges = null;
-        try {
-            edges = fennel.getFennelPartitionedEdges(
-                    env, filepath, numberOfPartitions, vertexCount, edgeCount);
-        } catch (IOException ignored) {}
+        edges = fennel.getFennelPartitionedEdges(
+                env, filepath, numberOfPartitions, vertexCount, edgeCount);
         GradoopIdSet graphId = new GradoopIdSet();
         env.setParallelism(numberOfPartitions);
 
@@ -67,15 +67,14 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
         SourceFunction<TemporalEdge> infinite = new SourceFunction<TemporalEdge>() {
             @Override
             public void run(SourceContext<TemporalEdge> sourceContext) {
-                while (cont) {
+                while (true) {
+                    System.out.println("Im still running ");
                     sourceContext.collect(new TemporalEdge(null, null, null, null,
                             null, null, null, null));
                     try {
                         Thread.sleep(1000);
-                    } catch (InterruptedException ignored) {
-                    }
+                    } catch (InterruptedException ignored) { }
                 }
-                cancel();
             }
 
             @Override
@@ -139,15 +138,14 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                 );
             }
         });
-        infinite = new SourceFunction<TemporalEdge>() {
+        SourceFunction infinite = new SourceFunction<TemporalEdge>() {
             @Override
             public void run(SourceContext<TemporalEdge> sourceContext) throws Exception {
-                while (cont) {
+                while (true) {
                     sourceContext.collect(new TemporalEdge(null, null, null, null,
                             null, null, null, null));
                     Thread.sleep(1000);
                 }
-                cancel();
             }
 
             @Override
@@ -168,7 +166,7 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
 
     public void stopInfiniteStream() {
         cont = false;
-        infinite.cancel();
+        //infinite.cancel();
     }
 
     public FennelPartitioning getFennel() {

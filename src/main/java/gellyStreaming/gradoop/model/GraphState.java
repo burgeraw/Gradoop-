@@ -37,9 +37,9 @@ import java.util.stream.StreamSupport;
 
 public class GraphState implements Serializable {
 
-    private final transient KeyedStream<TemporalEdge, Integer> input;
+    //private final transient KeyedStream<TemporalEdge, Integer> input;
     private final Integer[] keys;
-    private final transient QueryState QS;
+    private QueryState QS;
     private final boolean lazyPurging;
     private final int batchSize;
     private final Long windowSize;
@@ -48,7 +48,7 @@ public class GraphState implements Serializable {
     private transient SingleOutputStreamOperator<String> algorithmOutput = null;
     private final Algorithm algorithm;
     private final long firstTimestamp;
-    public transient JobID jobID;
+    public static JobID jobID;
     private final globalCounter myCounter;
 
 
@@ -62,7 +62,7 @@ public class GraphState implements Serializable {
                       int batchSize,
                       Algorithm algorithm) {
         this.QS = QS;
-        this.input = input;
+        //this.input = input;
         this.windowSize = windowSize;
         this.slide = slide;
         KeyGen keyGenerator = new KeyGen(numPartitions,
@@ -131,7 +131,7 @@ public class GraphState implements Serializable {
     }
 
 
-    public void overWriteQS(JobID jobID) throws UnknownHostException {
+    public void overWriteQS(JobID jobID) {
         QS.initialize(jobID);
         this.jobID = jobID;
     }
@@ -901,8 +901,9 @@ public class GraphState implements Serializable {
         private final LinkedList<Long> timestamps = new LinkedList<>();
         private final AtomicLong removalTimeCounter = new AtomicLong(0);
 
+
         @Override
-        public void open(Configuration parameters) throws Exception {
+        public void open(Configuration parameters) {
             System.out.println("Thread \t"+Thread.currentThread().getId()+"\t opens at: \t"+System.currentTimeMillis());
             MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> descriptor = new MapStateDescriptor<>(
                     "adjacencyList",
@@ -979,7 +980,7 @@ public class GraphState implements Serializable {
         }
 
         @Override
-        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) {
             if(slide != null) {
                 if (lazyPurging) {
                     boolean keepRemoving = true;
@@ -991,62 +992,79 @@ public class GraphState implements Serializable {
                             break;
                         }
                         if ((timestamp1 + windowSize) <= timestamp) {
-                            adjacencyList.remove(timestamp1);
+                            try {
+                                adjacencyList.remove(timestamp1);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
                             timestamps.poll();
                         } else {
                             keepRemoving = false;
                         }
                     }
                 } else {
-                    adjacencyList.remove(timestamp);
+                    try {
+                        adjacencyList.remove(timestamp);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
                 removalTimeCounter.getAndAdd((System.currentTimeMillis()-timestamp));
             }
 
-            if(timestamp == nextOutputTimestamp.value()) {
-                System.out.println(ctx.getCurrentKey()+"\t :State removal "+
-                        "took \t"+removalTimeCounter.get());
-                removalTimeCounter.set(0);
-                edgeCountSinceTimestamp.update(0);
-                long newtimestamp = timestamp;
-                if(newtimestamp == lastTimestamp.value()) {
-                    newtimestamp++;
-                }
-                lastTimestamp.update(newtimestamp);
-
-                if(slide != null) {
-                    nextOutputTimestamp.update(timestamp + slide);
-                    ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
-                    long current = ctx.timerService().currentProcessingTime();
-                    out.collect(ctx.getCurrentKey()+"\t :We started the onTimer \t"+(current-timestamp)+ " \t ms too late. If this is big, consider " +
-                            "increasing slide, decreasing input rate or using a faster algorithm.");
-                    try {
-                        out.collect(ctx.getCurrentKey()+"\t :AlgResult at time '" + timestamp + " : " +
-                                algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
-                                        timestamp, timestamp + windowSize));
-                    } catch (Exception e) {
-                        System.out.println(e);
+            try {
+                if(timestamp == nextOutputTimestamp.value()) {
+                    System.out.println(ctx.getCurrentKey()+"\t :State removal "+
+                            "took \t"+removalTimeCounter.get());
+                    removalTimeCounter.set(0);
+                    edgeCountSinceTimestamp.update(0);
+                    long newtimestamp = timestamp;
+                    if(newtimestamp == lastTimestamp.value()) {
+                        newtimestamp++;
                     }
-                    out.collect(ctx.getCurrentKey()+"\t :Alg took \t" + (ctx.timerService().currentProcessingTime() - current) + "\t ms");
+                    lastTimestamp.update(newtimestamp);
 
-                } else {
-                    if(timestamps.peekLast() < (timestamp-10000L)) {
-                        System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
-                        out.collect(ctx.getCurrentKey()+"\t :AlgResult at time \t" + timestamp + " \t: " +
+
+                    if(slide != null) {
+                        nextOutputTimestamp.update(timestamp + slide);
+                        ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
+                        long current = ctx.timerService().currentProcessingTime();
+                        out.collect(ctx.getCurrentKey()+"\t :We started the onTimer \t"+(current-timestamp)+ " \t ms too late. If this is big, consider " +
+                                "increasing slide, decreasing input rate or using a faster algorithm.");
+                        try {
+                            //QS.initialize(jobID);
+                            out.collect(ctx.getCurrentKey()+"\t :AlgResult at time '" + timestamp + " : " +
                                     algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
-                                            0, Long.MAX_VALUE));
-                        out.collect(ctx.getCurrentKey()+"\t :Alg took \t" + (ctx.timerService().currentProcessingTime() - timestamp));
-                        myCounter.incrementAlgResults();
+                                            timestamp, timestamp + windowSize));
+                        } catch (Exception e) {
+                            System.out.println(e);
+                        }
+                        out.collect(ctx.getCurrentKey()+"\t :Alg took \t" + (ctx.timerService().currentProcessingTime() - current) + "\t ms");
+
                     } else {
-                        nextOutputTimestamp.update(timestamp+10000L);
-                        ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+                        if(timestamps.peekLast() < (timestamp-10000L)) {
+                            System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
+                            //QS.initialize(jobID);
+                            out.collect(ctx.getCurrentKey()+"\t :AlgResult at time \t" + timestamp + " \t: " +
+                                        algorithm.doAlgorithm(adjacencyList, QS, ctx.getCurrentKey(), keys,
+                                                0, Long.MAX_VALUE));
+                                    //algorithm.doAlgorithm(adjacencyList, jobID, ctx.getCurrentKey(), keys,
+                                     //       0, Long.MAX_VALUE));
+                            out.collect(ctx.getCurrentKey()+"\t :Alg took \t" + (ctx.timerService().currentProcessingTime() - timestamp));
+                            myCounter.incrementAlgResults();
+                        } else {
+                            nextOutputTimestamp.update(timestamp+10000L);
+                            ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
+                        }
                     }
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
     }
 
-    public KeyedStream<TemporalEdge, Integer> getData() {
-        return input;
-    }
+    //public KeyedStream<TemporalEdge, Integer> getData() {
+    //    return input;
+   // }
 }

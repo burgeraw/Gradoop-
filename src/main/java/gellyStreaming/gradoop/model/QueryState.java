@@ -24,12 +24,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class QueryState implements Serializable {
 
-    private transient QueryableStateClient client;
-    private transient final MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
-    private transient final MapStateDescriptor<GradoopId, Integer> descriptor2;
-    private transient final MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> descriptorAL;
-    private transient JobID jobID;
-    private transient boolean initilized = false;
+    private static QueryableStateClient client;
+
+
+    private final MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
+    private final MapStateDescriptor<GradoopId, Integer> descriptor2;
+    private final MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> descriptorAL;
+    private static JobID jobID;
+    private static boolean initilized = false;
 
     public QueryState() {
         initilized = false;
@@ -64,17 +66,26 @@ public class QueryState implements Serializable {
     }
 
 
-    public void initialize(JobID jobID) throws UnknownHostException {
-        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
+    public void initialize(JobID jobID) {
+
+        //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
         //String tmHostname = "127.0.0.1";
+        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLoopbackAddress());
+        //String tmHostname2 = "130.149.21.16";
+        String tmHostname2 = tmHostname;
         int proxyPort = 9069;
+        System.out.println("tmHostname: " + tmHostname);
+        System.out.println("used hostname: "+tmHostname2);
+
+        try {
+            this.client = new QueryableStateClient(tmHostname, proxyPort);
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+
         this.jobID = jobID;
         initilized = true;
-
-        this.client = new QueryableStateClient(tmHostname, proxyPort);
-
         System.out.println("jobid: " + jobID.toString());
-        System.out.println("tmHostname: " + tmHostname);
     }
 
     public boolean isInitilized() {
@@ -412,13 +423,13 @@ public class QueryState implements Serializable {
 
     public void initialize2(JobID jobID) throws UnknownHostException {
         //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-        String tmHostname = "127.0.0.1";
-        int proxyPort = 9069;
+        //String tmHostname = "127.0.0.1";
+        //int proxyPort = 9069;
         this.jobID = jobID;
         initilized = true;
         ExecutionConfig executionConfig = new ExecutionConfig();
 
-        this.client = new QueryableStateClient(tmHostname, proxyPort);
+        //this.client = new QueryableStateClient(tmHostname, proxyPort);
         MapStateDescriptor<Integer, Integer> descriptor2 =
                 new MapStateDescriptor<Integer, Integer>(
                         "state",
@@ -428,7 +439,7 @@ public class QueryState implements Serializable {
                         }).createSerializer(executionConfig)
                 );
         System.out.println("jobid: " + jobID.toString());
-        System.out.println("tmHostname: " + tmHostname);
+        //System.out.println("tmHostname: " + client.);
     }
 
     public MapState<GradoopId, HashSet<GradoopId>> getState2(Integer key) throws Exception {
@@ -451,6 +462,36 @@ public class QueryState implements Serializable {
                         descriptor3);
         AtomicReference<Boolean> results = new AtomicReference<>(false);
         final Tuple1<MapState<GradoopId, HashSet<GradoopId>>> def = new Tuple1<>();
+        try{
+            def.f0 = resultFuture.get();
+            results.set(true);
+        } catch (Exception e) {
+            System.out.println("In QS: "+e);
+        }
+
+        if(results.get()) {
+            return def.f0;
+        } else {
+            throw new Exception();
+        }
+    }
+
+    public MapState<Integer, Integer> getState3(Integer key) throws Exception {
+        ExecutionConfig executionConfig = new ExecutionConfig();
+        MapStateDescriptor<Integer, Integer> descriptor = new MapStateDescriptor<Integer, Integer>(
+                "state",
+                TypeInformation.of(Integer.class).createSerializer(executionConfig),
+                TypeInformation.of(Integer.class).createSerializer(executionConfig));
+        CompletableFuture<MapState<Integer, Integer>> resultFuture =
+                client.getKvState(
+                        jobID,
+                        "state",
+                        key,
+                        new TypeHint<Integer>() {
+                        },
+                        descriptor);
+        AtomicReference<Boolean> results = new AtomicReference<>(false);
+        final Tuple1<MapState<Integer, Integer>> def = new Tuple1<>();
         try{
             def.f0 = resultFuture.get();
             results.set(true);

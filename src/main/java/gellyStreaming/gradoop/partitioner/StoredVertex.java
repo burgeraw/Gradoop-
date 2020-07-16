@@ -9,8 +9,8 @@ import java.util.TreeSet;
  */
 public class StoredVertex implements Serializable {
 
-    private final transient TreeSet<Byte> partitions;
-    private transient int degree;
+    private  TreeSet<Byte> partitions;
+    private int degree;
 
     public StoredVertex() {
         partitions = new TreeSet<Byte>();
