@@ -221,6 +221,7 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
         return output;
     }
 
+    /*
     @Override
     public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState, JobID jobID, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException {
         QueryState QS = null;
@@ -399,4 +400,6 @@ public class TriangleCountingFennelALRetrieveEdge implements Algorithm<String, M
         //System.out.println(output);
         return output;
     }
+
+     */
 }

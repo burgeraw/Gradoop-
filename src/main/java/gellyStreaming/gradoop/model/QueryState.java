@@ -24,16 +24,16 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class QueryState implements Serializable {
 
-    private static QueryableStateClient client;
+    private transient QueryableStateClient client;
 
 
     private final MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
     private final MapStateDescriptor<GradoopId, Integer> descriptor2;
     private final MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> descriptorAL;
-    private static JobID jobID;
-    private static boolean initilized = false;
+    private transient JobID jobID;
+    private transient boolean initilized = false;
 
-    public QueryState() {
+    public QueryState() throws UnknownHostException {
         initilized = false;
         ExecutionConfig executionConfig = new ExecutionConfig();
         executionConfig.registerPojoType(GradoopId.class);
@@ -63,29 +63,47 @@ public class QueryState implements Serializable {
                         TypeInformation.of(new TypeHint<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>() {
                         }).createSerializer(executionConfig)
                 );
+        //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
+        //String tmHostname = "127.0.0.1";
+        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLoopbackAddress());
+        //String tmHostname2 = "130.149.21.16";
+        try {
+            tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
+            System.out.println("used hostname: "+tmHostname);
+
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+        int proxyPort = 9069;
+        System.out.println("tmHostname: " + tmHostname);
+        this.client = new QueryableStateClient(tmHostname, proxyPort);
+
     }
 
 
     public void initialize(JobID jobID) {
 
-        //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-        //String tmHostname = "127.0.0.1";
-        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLoopbackAddress());
-        //String tmHostname2 = "130.149.21.16";
-        String tmHostname2 = tmHostname;
-        int proxyPort = 9069;
-        System.out.println("tmHostname: " + tmHostname);
-        System.out.println("used hostname: "+tmHostname2);
-
-        try {
-            this.client = new QueryableStateClient(tmHostname, proxyPort);
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-        }
-
         this.jobID = jobID;
         initilized = true;
         System.out.println("jobid: " + jobID.toString());
+        if(client==null) {
+            String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLoopbackAddress());
+            //String tmHostname2 = "130.149.21.16";
+            try {
+                tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
+                System.out.println("used hostname: "+tmHostname);
+
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
+            }
+            int proxyPort = 9069;
+            System.out.println("tmHostname: " + tmHostname);
+            try {
+                this.client = new QueryableStateClient(tmHostname, proxyPort);
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     public boolean isInitilized() {

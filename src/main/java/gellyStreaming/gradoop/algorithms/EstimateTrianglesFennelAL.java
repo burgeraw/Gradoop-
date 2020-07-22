@@ -249,9 +249,5 @@ public class EstimateTrianglesFennelAL implements Algorithm<String, MapState<Lon
         return output;
     }
 
-    @Override
-    public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState, JobID jobID, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException {
-        return null;
-    }
 }
 

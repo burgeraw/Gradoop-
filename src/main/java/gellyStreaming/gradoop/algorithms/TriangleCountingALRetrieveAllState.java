@@ -88,6 +88,7 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                         Thread.sleep(10);
                         if (tries >= maxTries) {
                             try {
+                                e.getCause();
                                 throw new Exception("We tried to get state " + maxTries + " times, but failed. "+e);
                             } catch (Exception ex) {
                                 ex.printStackTrace();
@@ -137,8 +138,5 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
         return "In partition "+localKey+" we found "+triangleCount.get()+" triangles ";
     }
 
-    @Override
-    public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState, JobID jobID, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException {
-        return null;
-    }
+
 }

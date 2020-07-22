@@ -18,9 +18,7 @@ import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.PrintStream;
+import java.io.*;
 import java.net.UnknownHostException;
 
 public class Experiments {
@@ -39,7 +37,7 @@ public class Experiments {
                                     String runNumber,
                                     String datastructure,
                                     String edgeOrVertexPartitioner,
-                                    String numberOfVertices) {
+                                    String numberOfVertices) throws UnknownHostException {
         File log = new File("Results/Experiment1a_edges" + numberOfEdges +"_"+datastructure+"_"+edgeOrVertexPartitioner+"partitioned_run" + runNumber+".txt");
         int numberOfPartitions = 4;
         PrintStream logStream = null;
@@ -91,7 +89,7 @@ public class Experiments {
                                     String datastructure,
                                     String edgeOrVertexPartitioner,
                                     String numberOfVertices,
-                                    String numberOfEdges) {
+                                    String numberOfEdges) throws UnknownHostException {
         File log = new File("Results/Experiment1b_parallelism" + parallelism+"_"+datastructure+"_"+edgeOrVertexPartitioner + "partitioned_run" + runNumber+".txt");
         int numberOfPartitions = Integer.parseInt(parallelism);
         PrintStream logStream = null;
@@ -139,7 +137,7 @@ public class Experiments {
                                    String filepath,
                                    String datastructure,
                                    String activeOrLazyPurging,
-                                   String numberOfEdges) {
+                                   String numberOfEdges) throws UnknownHostException {
         File log = new File("Results/Experiment2_batchSize" + batchSizePerPU+"_"+datastructure+"_"+activeOrLazyPurging + "purging_run" + runNumber+".txt");
         int numberOfPartitions = 4; // local
         //int numberOfPartitions = 100; //cluster
@@ -198,16 +196,16 @@ public class Experiments {
             e.printStackTrace();
         }
         //System.setOut(logStream);
-        System.out.println("Started job at: \t" + System.currentTimeMillis());
+        //System.out.println("Started job at: \t" + System.currentTimeMillis());
 
         // For local execution.
-        Configuration config = new Configuration();
-        config.set(DeploymentOptions.ATTACHED, false);
-        config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
+        //Configuration config = new Configuration();
+        //config.set(DeploymentOptions.ATTACHED, false);
+        //config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
+        //StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(numberOfPartitions, config);
 
         // For cluster execution.
-        //StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
@@ -221,6 +219,7 @@ public class Experiments {
             edgeStream = stream.getEdgePartitionedStream(
                     env, numberOfPartitions, filepath, true);
             alg = new TriangleCountingALRetrieveAllState();
+            edgeStream = edgeStream.undirected();
         } else if(edgeOrVertexPartitioner.equals("vertex")) {
             edgeStream = stream.getVertexPartitionedStream(
                     env, numberOfPartitions, filepath, Integer.parseInt(numberOfVertices),
@@ -260,7 +259,12 @@ public class Experiments {
         try {
             JobClient jobClient = env.executeAsync();
             JobID jobID = jobClient.getJobID();
-            GS.overWriteQS(jobID);
+            //GS.overWriteQS(jobID);
+            FileWriter fr = new FileWriter("/share/hadoop/annemarie/tempJobId");
+            BufferedWriter bf = new BufferedWriter(fr);
+            bf.write(jobID.toHexString());
+            bf.close();
+            fr.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -279,8 +283,8 @@ public class Experiments {
             //Experiment2("100", "1", "src/main/resources/email-Eu-core.txt",
             //        "AL", "active", "25571");
 
-            Experiment3a("edge", "vertex", "true", "100000",
-                        "resources/AL/email-Eu-core", "1", "1005", "32770",
+            Experiment3a("edge", "edge", "true", "100000",
+                    "src/main/resources/email-Eu-core.txt", "1", "1005", "25571",
                         "false");
 
         } else {

@@ -26,6 +26,8 @@ import org.apache.flink.util.Collector;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.Serializable;
 import java.net.UnknownHostException;
 import java.util.*;
@@ -48,7 +50,7 @@ public class GraphState implements Serializable {
     private transient SingleOutputStreamOperator<String> algorithmOutput = null;
     private final Algorithm algorithm;
     private final long firstTimestamp;
-    public static JobID jobID;
+    public transient JobID jobID;
     private final globalCounter myCounter;
 
 
@@ -290,6 +292,15 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
+
+                if(!QS.isInitilized()) {
+                    FileReader fr = new FileReader("/share/hadoop/annemarie/tempJobId");
+                    BufferedReader bf = new BufferedReader(fr);
+                    QS.initialize(JobID.fromHexString(bf.readLine()));
+                    bf.close();
+                    fr.close();
+                }
+
                 if(!lazyPurging && slide != null) {
                     ctx.timerService().registerProcessingTimeTimer(lastTimestamp.value() + windowSize);
                 } else {
@@ -431,6 +442,15 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
+
+                if(!QS.isInitilized()) {
+                    FileReader fr = new FileReader("/share/hadoop/annemarie/tempJobId");
+                    BufferedReader bf = new BufferedReader(fr);
+                    QS.initialize(JobID.fromHexString(bf.readLine()));
+                    bf.close();
+                    fr.close();
+                }
+
                 if(slide != null) {
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
@@ -578,6 +598,15 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
+
+                if(!QS.isInitilized()) {
+                    FileReader fr = new FileReader("/share/hadoop/annemarie/tempJobId");
+                    BufferedReader bf = new BufferedReader(fr);
+                    QS.initialize(JobID.fromHexString(bf.readLine()));
+                    bf.close();
+                    fr.close();
+                }
+
                 if(slide != null) {
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
@@ -723,6 +752,15 @@ public class GraphState implements Serializable {
                 } else {
                     timestamps.add(lastTimestamp.value());
                 }
+
+                if(!QS.isInitilized()) {
+                    FileReader fr = new FileReader("/share/hadoop/annemarie/tempJobId");
+                    BufferedReader bf = new BufferedReader(fr);
+                    QS.initialize(JobID.fromHexString(bf.readLine()));
+                    bf.close();
+                    fr.close();
+                }
+
                 if(slide != null) {
                     nextOutputTimestamp.update(timestamp + slide);
                     long current = ctx.timerService().currentProcessingTime();
@@ -874,6 +912,15 @@ public class GraphState implements Serializable {
                     newtimestamp++;
                 }
                 lastTimestamp.update(newtimestamp);
+
+                if(!QS.isInitilized()) {
+                    FileReader fr = new FileReader("/share/hadoop/annemarie/tempJobId");
+                    BufferedReader bf = new BufferedReader(fr);
+                    QS.initialize(JobID.fromHexString(bf.readLine()));
+                    bf.close();
+                    fr.close();
+                }
+
                 if(slide != null) {
                     nextOutputTimestamp.update(timestamp + slide);
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
@@ -1024,6 +1071,13 @@ public class GraphState implements Serializable {
                     }
                     lastTimestamp.update(newtimestamp);
 
+                    if(!QS.isInitilized()) {
+                        FileReader fr = new FileReader("/share/hadoop/annemarie/tempJobId");
+                        BufferedReader bf = new BufferedReader(fr);
+                        QS.initialize(JobID.fromHexString(bf.readLine()));
+                        bf.close();
+                        fr.close();
+                    }
 
                     if(slide != null) {
                         nextOutputTimestamp.update(timestamp + slide);

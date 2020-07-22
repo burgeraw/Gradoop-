@@ -27,8 +27,4 @@ public class TotalSizeALState implements Algorithm<String, MapState<Long, HashMa
         return "In partition "+localKey+" the local state has "+counter.get()+" edges.";
     }
 
-    @Override
-    public String doAlgorithm(MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> localState, JobID jobID, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException {
-        return null;
-    }
 }

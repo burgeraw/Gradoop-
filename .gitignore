@@ -29,3 +29,7 @@ target/
 *.jar
 
 flink-1\.11\.0/
+
+resources/AL/email-Eu-core-Fennel-output/
+
+tempJobId

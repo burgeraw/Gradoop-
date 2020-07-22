@@ -13,7 +13,6 @@ import java.util.HashMap;
 
 public interface Algorithm<T, S> extends Serializable {
     T doAlgorithm(S localState, QueryState QS, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException;
-    T doAlgorithm(S localState, JobID jobID, Integer localKey, Integer[] allKeys, long from, long maxValidTo) throws InterruptedException;
 }
 
 
