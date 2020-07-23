@@ -18,6 +18,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
@@ -63,21 +64,6 @@ public class QueryState implements Serializable {
                         TypeInformation.of(new TypeHint<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>() {
                         }).createSerializer(executionConfig)
                 );
-        //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-        //String tmHostname = "127.0.0.1";
-        String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLoopbackAddress());
-        //String tmHostname2 = "130.149.21.16";
-        try {
-            tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-            System.out.println("used hostname: "+tmHostname);
-
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-        }
-        int proxyPort = 9069;
-        System.out.println("tmHostname: " + tmHostname);
-        this.client = new QueryableStateClient(tmHostname, proxyPort);
-
     }
 
 
@@ -87,19 +73,18 @@ public class QueryState implements Serializable {
         initilized = true;
         System.out.println("jobid: " + jobID.toString());
         if(client==null) {
-            String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLoopbackAddress());
-            //String tmHostname2 = "130.149.21.16";
+            String tmHostname = null;
             try {
                 tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-                System.out.println("used hostname: "+tmHostname);
-
             } catch (UnknownHostException e) {
                 e.printStackTrace();
             }
             int proxyPort = 9069;
-            System.out.println("tmHostname: " + tmHostname);
             try {
+                //For cluster
                 this.client = new QueryableStateClient(tmHostname, proxyPort);
+                // For local IDE
+                //this.client = new QueryableStateClient("localhost", proxyPort);
             } catch (UnknownHostException e) {
                 e.printStackTrace();
             }
@@ -292,7 +277,7 @@ public class QueryState implements Serializable {
     }
 
     public Boolean[] ALcontainsEdgesFromTo(
-            Integer key, GradoopId[] src, GradoopId[] trg, long From, long To) throws Exception {
+            Integer key, LinkedList<GradoopId> src, LinkedList<GradoopId> trg, long From, long To) throws Exception {
         CompletableFuture<MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> resultFuture =
                 client.getKvState(
                         jobID,
@@ -302,16 +287,20 @@ public class QueryState implements Serializable {
                         },
                         descriptorAL);
         AtomicReference<Boolean> results = new AtomicReference<>(false);
-        Boolean[] contains = new Boolean[src.length];
-        for(int j = 0; j < src.length; j++) {
-            contains[j] = false;
+        Boolean[] contains = new Boolean[src.size()];
+        for(int j = 0; j < contains.length; j++) {
+            contains[j] = null;
         }
         for(long timestamp: resultFuture.get().keys()) {
             if (timestamp <= To && timestamp >= From) {
-                for (int i = 0; i < src.length; i++) {
-                    if (resultFuture.get().get(timestamp).containsKey(src[i]) &&
-                            resultFuture.get().get(timestamp).get(src[i]).containsKey(trg[i])) {
+                for (int i = 0; i < src.size(); i++) {
+                    if (resultFuture.get().get(timestamp).containsKey(src.get(i)) &&
+                            resultFuture.get().get(timestamp).get(src.get(i)).containsKey(trg.get(i))) {
                         contains[i] = true;
+                    } else if (resultFuture.get().get(timestamp).containsKey(src.get(i)) &&
+                            !resultFuture.get().get(timestamp).get(src.get(i)).containsKey(trg.get(i)) &&
+                            contains[i] == null) {
+                        contains[i] = false;
                     }
                 }
             }

@@ -270,7 +270,7 @@ public class Tests {
         SimpleTemporalEdgeStream edgeStream = new SimpleTemporalEdgeStream(finalEdges, env, graphId);
         //edgeStream.print();
         env.setParallelism(1);
-
+/*
         edgeStream.getEdges().process(new ProcessFunction<TemporalEdge, Object>() {
             StoredVertexPartitionState copy = fennel.getState();
             @Override
@@ -292,6 +292,8 @@ public class Tests {
 
             }
         });
+
+ */
         env.execute();
 
     }
@@ -322,7 +324,7 @@ public class Tests {
                 //null);
                 //new DistinctVertexCounterFennelAL(fennel));
                 //new TotalSizeALState());
-                new EstimateTrianglesFennelAL(fennel, 1000, true, 300000L));
+                new EstimateTrianglesAL(1000, true, 3000L, 1, true));
         GS.getAlgorithmOutput().print();
         //GS.getDecoupledOutput().print();
         try {
@@ -369,8 +371,8 @@ public class Tests {
                 //        fennel, 1000000000, true));
                 null);
         //GS.getAlgorithmOutput().print();
-        TriangleCountingFennelALRetrieveEdge alg = new TriangleCountingFennelALRetrieveEdge(
-                fennel, 1000000000, false);
+        TriangleCountingALRetrieveEdge alg = new TriangleCountingALRetrieveEdge(
+                1000000000, false);
         GS.doDecoupledAlg(alg).print();
         //GS.getAlgorithmOutput().print();
         try {

@@ -48,16 +48,7 @@ public class FennelPartitioning implements Serializable {
                     @Override
                     public void flatMap(Tuple2<Long, List<Long>> vertexList, Collector<Tuple2<Edge<Long, String>, Integer>> collector) throws Exception {
                         Long keyEdge = keySelector.getKey(vertexList);
-                        if(vertexList.f1==null) {
-                            System.out.println("Error");
-                        }
                         Long srcId = vertexList.f0;
-                        if(partitioner1 == null) {
-                            System.out.println("partitioner is null");
-                        }
-                        if(keyEdge == null) {
-                            System.out.println("keyedge is null");
-                        }
                         int machineId = partitioner1.partition(keyEdge, numberOfPartitions);
                         for(Long neighbour : vertexList.f1) {
                             collector.collect(Tuple2.of(new Edge<Long, String>(srcId, neighbour, ""),machineId));
@@ -73,15 +64,6 @@ public class FennelPartitioning implements Serializable {
                     }
                 });
     }
-
-    public StoredVertexPartitionState getState() {
-        return ((FennelPartitioner<Long, Long>)partitioner).getCurrentState();
-    }
-
-    public Iterator<Byte> getPartitions(Long key) {
-        return ((FennelPartitioner<Long, Long>)partitioner).currentState.getPartitions(key);
-    }
-
 
     public DataStream<Tuple2<Long, List<Long>>> getVertices(StreamExecutionEnvironment env, String inputPath) {
 
@@ -124,7 +106,7 @@ public class FennelPartitioning implements Serializable {
         private final double alpha;  //parameters for formula
         private final double gamma;
         private final double loadlimit;
-        private static StoredVertexPartitionState currentState;
+        private StoredVertexPartitionState currentState;
         private final int[] keys;
 
 

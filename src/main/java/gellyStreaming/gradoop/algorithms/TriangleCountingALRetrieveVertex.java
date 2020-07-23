@@ -14,19 +14,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
+public class TriangleCountingALRetrieveVertex implements Algorithm<String, MapState<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>>> {
 
     // Granularity of retrieval: getting the vertexID & all its neighbours from remote partition.
-    private final FennelPartitioning fennel;
     private final int QSbatchsize;
     private final boolean caching;
 
-    public TriangleCountingFennelALRetrieveVertex(FennelPartitioning fennel, int QSbatchsize, boolean caching) {
-        this.fennel = fennel;
-        if (fennel == null) {
-            System.out.println("Fennel vertex partitioning hasn't been instantiated.");
-            throw new InstantiationError("Fennel vertex partitioning hasn't been instantiated.");
-        }
+    public TriangleCountingALRetrieveVertex(int QSbatchsize, boolean caching) {
         this.QSbatchsize = QSbatchsize;
         this.caching = caching;
     }
@@ -38,9 +32,8 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
             System.out.println("We don't have Queryable State initialized.");
         }
 
-        // Queue : HashMap< remote partition key, Hashmap < ID to retrieve,
-        // List< IDs to check if they make a triangle with this retrieved ID > >
-        HashMap<Integer, HashMap<GradoopId, LinkedList<GradoopId>>> QSqueue = new HashMap<>();
+        // Queue : Hashmap < ID to retrieve, List< IDs to check if they make a triangle with this retrieved ID > >
+        HashMap<GradoopId, LinkedList<GradoopId>> QSqueue = new HashMap<>();
         // Save the retrieved vertices and their neigbours in cache.
         HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> cache = new HashMap<>();
         AtomicInteger QSqueueSize = new AtomicInteger(0);
@@ -122,57 +115,50 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
                                     !localAdjacencyList.containsKey(neighbour2) && !cache.containsKey(neighbour1)
                                     && !cache.containsKey(neighbour2)) {
                                 // Retrieve the partition the neighbour is in from the fennel partitioner.
-                                Iterator<Byte> byteIterator = fennel.getPartitions(GradoopIdUtil.getLong(neighbour1));
-                                List<Byte> byteList = new LinkedList<>();
-                                while (byteIterator.hasNext()) {
-                                    byteList.add(byteIterator.next());
-                                }
-                                for (Byte partition : byteList) {
-                                    int partitionKey = allKeys[partition];
+                                    //int partitionKey = allKeys[partition];
                                     // Add the request to the queue with the partition to retrieve the Vertex from, which
                                     // vertex we need, and add the edge we need to check if its present in the list after.
-                                    if (!QSqueue.containsKey(partitionKey)) {
-                                        QSqueue.put(partitionKey, new HashMap<>());
+                                    if (!QSqueue.containsKey(neighbour1)) {
+                                        QSqueue.put(neighbour1, new LinkedList<>());
                                     }
-                                    if (!QSqueue.get(partitionKey).containsKey(neighbour1)) {
-                                        QSqueue.get(partitionKey).put(neighbour1, new LinkedList<>());
-                                    }
-                                    QSqueue.get(partitionKey).get(neighbour1).add(neighbour2);
+                                    QSqueue.get(neighbour1).add(neighbour2);
                                     QSqueueSize.getAndIncrement();
                                     // If queue reaches size QSbatchsize, we go retrieve the requests.
                                     if (QSqueueSize.get() > QSbatchsize) {
-                                        for (int partitionToQuery : QSqueue.keySet()) {
-                                            GradoopId[] list = QSqueue.get(partitionToQuery).keySet().toArray(GradoopId[]::new);
-                                            int tries = 0;
-                                            while (tries < 10) {
-                                                try {
-                                                    long start = System.currentTimeMillis();
-                                                    HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> temp = QS.getALVerticesFromTo(
-                                                            partitionToQuery, list, from, maxValidTo);
-                                                    long stop = System.currentTimeMillis();
-                                                    QStimer.getAndAdd((stop-start));
-                                                    for (GradoopId beenQueried : list) {
-                                                        if (caching) {
-                                                            if (!cache.containsKey(beenQueried)) {
-                                                                cache.put(beenQueried, new HashMap<>());
-                                                            }
-                                                            cache.get(beenQueried).putAll(temp.get(beenQueried));
-                                                        }
-                                                        for (GradoopId potentialTriangle : QSqueue.get(partitionToQuery).get(beenQueried)) {
-                                                            if (temp.get(beenQueried).containsKey(potentialTriangle)) {
-                                                                triangleCount.getAndIncrement();
-                                                            }
-                                                        }
-                                                    }
-                                                    break;
-                                                //} catch (NullPointerException ignored) {
-                                                } catch (Exception e) {
-                                                    tries++;
+                                        for (int partitionToQuery : allKeys) {
+                                            if (partitionToQuery != localKey) {
+                                                GradoopId[] list = QSqueue.keySet().toArray(GradoopId[]::new);
 
-                                                        Thread.sleep(10);
+                                                int tries = 0;
+                                                while (tries < 10) {
+                                                    try {
+                                                        long start = System.currentTimeMillis();
+                                                        HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> temp = QS.getALVerticesFromTo(
+                                                                partitionToQuery, list, from, maxValidTo);
+                                                        long stop = System.currentTimeMillis();
+                                                        QStimer.getAndAdd((stop - start));
+                                                        for (GradoopId beenQueried : temp.keySet()) {
+                                                            if (caching) {
+                                                                if (!cache.containsKey(beenQueried)) {
+                                                                    cache.put(beenQueried, new HashMap<>());
+                                                                }
+                                                                cache.get(beenQueried).putAll(temp.get(beenQueried));
+                                                            }
+                                                            for (GradoopId potentialTriangle : QSqueue.get(beenQueried)) {
+                                                                if (temp.get(beenQueried).containsKey(potentialTriangle)) {
+                                                                    triangleCount.getAndIncrement();
+                                                                }
+                                                            }
+                                                            QSqueue.remove(beenQueried);
+                                                        }
+                                                        break;
+                                                        //} catch (NullPointerException ignored) {
+                                                    } catch (Exception e) {
+                                                        tries++;
 
-                                                    if (tries == 10) {
-                                                        System.out.println("ERROR, tried 10 times & failed using QS. " + e);
+                                                        if (tries == 10) {
+                                                            System.out.println("ERROR, tried 10 times & failed using QS. " + e);
+                                                        }
                                                     }
                                                 }
                                             }
@@ -185,36 +171,37 @@ public class TriangleCountingFennelALRetrieveVertex implements Algorithm<String,
                         }
                     }
                 }
-            }
         }
         // Retrieved info doesn't need to be put in cache, because we won't use it again after.
         if (QSqueueSize.get() != 0) {
-            for (int partitionToQuery : QSqueue.keySet()) {
-                GradoopId[] list = QSqueue.get(partitionToQuery).keySet().toArray(GradoopId[]::new);
-                int tries = 0;
-                while (tries < 10) {
-                    try {
-                        long start = System.currentTimeMillis();
-                        HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> temp = QS.getALVerticesFromTo(
-                                partitionToQuery, list, from, maxValidTo);
-                        long stop = System.currentTimeMillis();
-                        QStimer.getAndAdd((stop-start));
-                        for (GradoopId beenQueried : list) {
-                            for (GradoopId potentialTriangle : QSqueue.get(partitionToQuery).get(beenQueried)) {
-                                if (temp.get(beenQueried).containsKey(potentialTriangle)) {
-                                    triangleCount.getAndIncrement();
+            for (int partitionToQuery : allKeys) {
+                if (partitionToQuery != localKey) {
+                    GradoopId[] list = QSqueue.keySet().toArray(GradoopId[]::new);
+                    int tries = 0;
+                    while (tries < 10) {
+                        try {
+                            long start = System.currentTimeMillis();
+                            HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> temp = QS.getALVerticesFromTo(
+                                    partitionToQuery, list, from, maxValidTo);
+                            long stop = System.currentTimeMillis();
+                            QStimer.getAndAdd((stop - start));
+                            for (GradoopId beenQueried : temp.keySet()) {
+                                for (GradoopId potentialTriangle : QSqueue.get(beenQueried)) {
+                                    if (temp.get(beenQueried).containsKey(potentialTriangle)) {
+                                        triangleCount.getAndIncrement();
+                                    }
                                 }
+                                QSqueue.remove(beenQueried);
                             }
-                        }
-                        break;
-                    } catch (NullPointerException ignored) {
-                    } catch (Exception e) {
+                            break;
+                            //} catch (NullPointerException ignored) {
+                        } catch (Exception e) {
 
-                            Thread.sleep(10);
 
-                        tries++;
-                        if (tries == 10) {
-                            System.out.println("ERROR, tried 10 times & failed using QS. " + e);
+                            tries++;
+                            if (tries == 10) {
+                                System.out.println("ERROR, tried 10 times & failed using QS. " + e);
+                            }
                         }
                     }
                 }
