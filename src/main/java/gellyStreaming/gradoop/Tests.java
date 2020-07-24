@@ -9,6 +9,7 @@ import gellyStreaming.gradoop.partitioner.*;
 import gellyStreaming.gradoop.util.GradoopIdUtil;
 import gellyStreaming.gradoop.util.HelpState;
 import gellyStreaming.gradoop.util.PartitionEdges;
+import gellyStreaming.gradoop.util.makeSimpleTemporalEdgeStream;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -383,6 +384,23 @@ public class Tests {
         }
     }
 
+    public static void testThrougput() {
+        System.out.println(System.currentTimeMillis());
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        //SimpleTemporalEdgeStream stream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(env, 1L, 2,
+        //        "/home/annemarie/Documents/gitkraken/Gradoop++/resources/AL/email-Eu-core", 1005, 32770, false );
+        SimpleTemporalEdgeStream stream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(env, 1L,
+                2, "/home/annemarie/Documents/gitkraken/Gradoop++/src/main/resources/email-Eu-core.txt", false);
+        //stream.print();
+        stream.numberOfEdges().print();
+        try {
+            env.execute();
+            System.out.println(System.currentTimeMillis());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 
 
     public static void main(String[] args) throws Exception {
@@ -398,7 +416,8 @@ public class Tests {
         //testVertexPartitioner();
         //vertexBasedTriangleCounting();
         //testDecoupled();
-        GradoopIdTests();
+        //GradoopIdTests();
+        testThrougput();
         //Thread.sleep(100000);
         //Runtime rt2 = Runtime.getRuntime();
         //long usedMB2 = (rt2.totalMemory() - rt2.freeMemory()) / 1024 / 1024;

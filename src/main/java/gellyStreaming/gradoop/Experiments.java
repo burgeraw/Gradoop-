@@ -23,7 +23,8 @@ public class Experiments {
                                      String datastructure,
                                      String edgeOrVertexPartitioner,
                                      String numberOfVertices,
-                                     String parallelism) throws UnknownHostException {
+                                     String parallelism,
+                                    String timeBetweenElements) throws UnknownHostException {
         System.out.println("Experiment1: edges " + numberOfEdges + ", " + datastructure + ", " + edgeOrVertexPartitioner
                 + " partitioned, run " + runNumber+ ", parallelism "+parallelism);
         int numberOfPartitions = Integer.parseInt(parallelism);
@@ -34,11 +35,11 @@ public class Experiments {
         SimpleTemporalEdgeStream edgeStream;
         if (edgeOrVertexPartitioner.equals("vertex")) {
             edgeStream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(
-                    env, numberOfPartitions, filepath,
+                    env, Long.parseLong(timeBetweenElements), numberOfPartitions, filepath,
                     Integer.parseInt(numberOfVertices), Integer.parseInt(numberOfEdges), false);
         } else {
             edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
-                    env, numberOfPartitions, filepath, false);
+                    env, Long.parseLong(timeBetweenElements), numberOfPartitions, filepath, false);
 
         }
         env.setParallelism(numberOfPartitions);
@@ -64,7 +65,8 @@ public class Experiments {
                                     String activeOrLazyPurging,
                                     String parallelism,
                                     String windowSize,
-                                    String slideSize) throws UnknownHostException {
+                                    String slideSize,
+                                    String timeBetweenElements) throws UnknownHostException {
         System.out.println("Experiment2: batchSize " + batchSizePerPU + ", " + datastructure + ", " + activeOrLazyPurging
                 + " purging, run" + runNumber + ", parallelism "+parallelism+", windowsize "+windowSize+", slide "+slideSize);
         int numberOfPartitions = Integer.parseInt(parallelism);
@@ -73,7 +75,7 @@ public class Experiments {
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
-                env, numberOfPartitions, filepath, false);
+                env, Long.parseLong(timeBetweenElements), numberOfPartitions, filepath, false);
         env.setParallelism(numberOfPartitions);
         QueryState QS = new QueryState();
         // Change window/slide to fit dataset. System exits/closes when all data has been loaded in state, so not
@@ -97,7 +99,8 @@ public class Experiments {
                                     String numberOfVertices,
                                     String numberOfEdges,
                                     String fullyDecoupled,
-                                    String parallelism) throws UnknownHostException {
+                                    String parallelism,
+                                    String timeBetweenElements) throws UnknownHostException {
         System.out.println("Experiment3: granularity " + algorithmGranularity + ", " + edgeOrVertexPartitioner +
                 "partitioned, caching " + withCaching + ", QS batchsize "+QSbatchSize+", run " + runNumber +
                 ", fullyDecoupled " + fullyDecoupled);
@@ -118,12 +121,12 @@ public class Experiments {
         Algorithm alg = null;
         if (edgeOrVertexPartitioner.equals("edge")) {
             edgeStream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(
-                    env, numberOfPartitions, filepath, true);
+                    env, Long.parseLong(timeBetweenElements), numberOfPartitions, filepath, true);
             edgeStream = edgeStream.undirected();
             alg = new TriangleCountingALRetrieveAllState();
         } else if (edgeOrVertexPartitioner.equals("vertex")) {
             edgeStream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(
-                    env, numberOfPartitions, filepath, Integer.parseInt(numberOfVertices),
+                    env, Long.parseLong(timeBetweenElements), numberOfPartitions, filepath, Integer.parseInt(numberOfVertices),
                     Integer.parseInt(numberOfEdges), true);
             switch (algorithmGranularity) {
                 case "state":
@@ -179,7 +182,8 @@ public class Experiments {
                                     String repeats,
                                     String windowSize,
                                     String slide,
-                                    String withQS) throws UnknownHostException {
+                                    String withQS,
+                                    String timeBetweenElements) throws UnknownHostException {
         System.out.println("Experiment 5: caching " + withCaching + ", QS batchsize "+QSbatchSize+", run " + runNumber +
                 ", fullyDecoupled " + fullyDecoupled + ", output each " + timeToRun + ", repeat output times "+ repeats +
                 " , windowSize "+windowSize+" , slide "+slide+", withQS "+withQS);
@@ -197,7 +201,7 @@ public class Experiments {
         env.setParallelism(numberOfPartitions);
         env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
         SimpleTemporalEdgeStream edgeStream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(
-                env, numberOfPartitions, filepath, Integer.parseInt(numberOfVertices), Integer.parseInt(numberOfEdges), true);
+                env, Long.parseLong(timeBetweenElements), numberOfPartitions, filepath, Integer.parseInt(numberOfVertices), Integer.parseInt(numberOfEdges), true);
         Algorithm alg = new EstimateTrianglesAL(Integer.parseInt(QSbatchSize), withCaching.equals("true"),
                 Long.parseLong(timeToRun), Integer.parseInt(repeats), withQS.equals("true"));
 
@@ -238,15 +242,15 @@ public class Experiments {
     public static void main(String[] args) throws InstantiationException, UnknownHostException {
         if (args.length == 0) {
             //Experiment1("src/main/resources/email-Eu-core.txt", "25571", "1",
-              //      "sortedEL", "edge", null, "8");
+              //      "sortedEL", "edge", null, "8", "0");
             //Experiment2("100", "1", "/home/annemarie/Documents/gitkraken/Gradoop++/src/main/resources/email-Eu-core.txt",
-              //      "AL", "active", "4", "1000", "1000");
+              //      "AL", "active", "4", "1000", "1000", "0");
             //Experiment3("edge", "vertex", "true", "100000",
               //      "/home/annemarie/Documents/gitkraken/Gradoop++/resources/AL/email-Eu-core", "1",
-                //    "1005", "32770", "false", "4");
-            Experiment5("true", "10000", "/home/annemarie/Documents/gitkraken/Gradoop++/resources/AL/Cit-HepPh",
-                    "1", "34546", "421578", "false", "2", "50000",
-                    "1", "200000", "null", "false");
+                //    "1005", "32770", "false", "4", "0");
+            //Experiment5("true", "10000", "/home/annemarie/Documents/gitkraken/Gradoop++/resources/AL/Cit-HepPh",
+              //      "1", "34546", "421578", "false", "2", "50000",
+                //    "1", "200000", "null", "false", "0");
 
         } else {
             switch (args[0]) {
@@ -260,7 +264,8 @@ public class Experiments {
                     String edgeOrVertexPartitioner = args[5];
                     String numberOfVertices = args[6];
                     String parallelism = args[7];
-                    Experiment1(filepath, numberOfEdges, runNumber, datastructure, edgeOrVertexPartitioner, numberOfVertices, parallelism);
+                    String timeBetweenElements = args[8];
+                    Experiment1(filepath, numberOfEdges, runNumber, datastructure, edgeOrVertexPartitioner, numberOfVertices, parallelism, timeBetweenElements);
                     break;
 
                 // Test behaviour when loading elements in state while also deleting them after window, either with lazy or active
@@ -274,7 +279,8 @@ public class Experiments {
                     parallelism = args[6];
                     String windowSize = args[7];
                     String slideSize = args[8];
-                    Experiment2(batchSizePerPU, runNumber, filepath, datastructure, activeOrLazyPurging, parallelism, windowSize, slideSize);
+                    timeBetweenElements = args[9];
+                    Experiment2(batchSizePerPU, runNumber, filepath, datastructure, activeOrLazyPurging, parallelism, windowSize, slideSize, timeBetweenElements);
                     break;
 
                 // Test behaviour of exact triangle counting algorithms on full state. First load all elements in AL, then
@@ -293,8 +299,9 @@ public class Experiments {
                     numberOfEdges = args[8];
                     String fullyDecoupled = args[9];
                     parallelism = args[10];
+                    timeBetweenElements = args[11];
                     Experiment3(algorithmGranularity, edgeOrVertexPartitioner, withCaching, QSbatchSize,
-                                filepath, runNumber, numberOfVertices, numberOfEdges, fullyDecoupled, parallelism);
+                                filepath, runNumber, numberOfVertices, numberOfEdges, fullyDecoupled, parallelism, timeBetweenElements);
                     break;
 
                 // Experiment 4: use 3, but focus on reported the memory usage. Get these from web interface of flink
@@ -315,8 +322,9 @@ public class Experiments {
                     windowSize = args[11];
                     slideSize = args[12];
                     String withQS = args[13];
+                    timeBetweenElements = args[14];
                     Experiment5(withCaching, QSbatchSize, filepath, runNumber, numberOfVertices, numberOfEdges, fullyDecoupled,
-                            parallelism, timeToRun, repeats, windowSize, slideSize, withQS);
+                            parallelism, timeToRun, repeats, windowSize, slideSize, withQS, timeBetweenElements);
                     break;
             }
         }

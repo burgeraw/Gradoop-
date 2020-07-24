@@ -108,6 +108,13 @@ public class GraphState implements Serializable {
             @Override
             public void processElement(Tuple4<Integer, Integer[], Long, Long> integerLongLongTuple4, Context context, Collector<String> collector) throws Exception {
                 System.out.println(integerLongLongTuple4);
+                if(!QS.isInitilized()) {
+                    FileReader fr = new FileReader("/share/hadoop/annemarie/tempJobId");
+                    BufferedReader bf = new BufferedReader(fr);
+                    QS.initialize(JobID.fromHexString(bf.readLine()));
+                    bf.close();
+                    fr.close();
+                }
                 long before = context.timerService().currentProcessingTime();
                 collector.collect("In partition "+integerLongLongTuple4.f0+" we got results: "+
                         alg.doAlgorithm(null, QS, integerLongLongTuple4.f0, integerLongLongTuple4.f1,

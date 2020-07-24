@@ -22,42 +22,53 @@ import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
+import java.util.stream.Stream;
 
 public class makeSimpleTemporalEdgeStream implements Serializable {
 
 
     public static SimpleTemporalEdgeStream getVertexPartitionedStream(StreamExecutionEnvironment env,
+                                                                      Long timeBetweenElements,
                                                                       Integer numberOfPartitions,
                                                                       String filepath,
                                                                       Integer vertexCount,
                                                                       Integer edgeCount,
-                                                                      Boolean makeInf)  {
+                                                                      Boolean makeInf) {
         long currentTime = System.currentTimeMillis();
         final boolean cont = makeInf;
         KeyGen keyGenerator = new KeyGen(numberOfPartitions, KeyGroupRangeAssignment.computeDefaultMaxParallelism(numberOfPartitions));
         int[] keys = new int[numberOfPartitions];
-        for (int i = 0; i < numberOfPartitions ; i++)
+        for (int i = 0; i < numberOfPartitions; i++)
             keys[i] = keyGenerator.next(i);
         env.setParallelism(1);
         DataStream<Tuple2<Long, List<Long>>> vertices = null;
         try {
-            vertices = getVertices(env, filepath);
+            if (timeBetweenElements != 0) {
+                vertices = getVerticesWithThroughput(env, filepath, timeBetweenElements);
+
+            } else { //max throughput
+                vertices = getVertices(env, filepath);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
 
+
         DataStream<Tuple2<Edge<Long, String>, Integer>> edges = vertices.flatMap(new FlatMapFunction<Tuple2<Long, List<Long>>, Tuple2<Edge<Long, String>, Integer>>() {
             CustomKeySelector2 keySelector = new CustomKeySelector2(0);
             FennelPartitioner fennel = new FennelPartitioner(keySelector, numberOfPartitions, vertexCount, edgeCount);
+
             @Override
             public void flatMap(Tuple2<Long, List<Long>> vertexList, Collector<Tuple2<Edge<Long, String>, Integer>> collector) throws Exception {
-                Long keyEdge = (long)keySelector.getKey(vertexList);
+                Long keyEdge = (long) keySelector.getKey(vertexList);
                 Long srcId = vertexList.f0;
                 int machineId = fennel.partition(keyEdge, numberOfPartitions);
                 int partition = keys[machineId];
-                for(Long neighbour : vertexList.f1) {
-                    collector.collect(Tuple2.of(new Edge<Long, String>(srcId, neighbour, ""),partition));
+                for (Long neighbour : vertexList.f1) {
+                    collector.collect(Tuple2.of(new Edge<Long, String>(srcId, neighbour, ""), partition));
                 }
             }
         });
@@ -94,7 +105,8 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                             null, null, null, null));
                     try {
                         Thread.sleep(1000);
-                    } catch (InterruptedException ignored) { }
+                    } catch (InterruptedException ignored) {
+                    }
                 }
             }
 
@@ -102,7 +114,7 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
             public void cancel() {
             }
         };
-        if(makeInf) {
+        if (makeInf) {
             DataStream<TemporalEdge> makeInfinite = env.addSource(infinite);
             tempEdges = tempEdges.union(makeInfinite)
                     .filter(new FilterFunction<TemporalEdge>() {
@@ -116,27 +128,62 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
     }
 
     public static SimpleTemporalEdgeStream getEdgePartitionedStream(StreamExecutionEnvironment env,
+                                                                    Long timeBetweenElements,
                                                                     Integer numberOfPartitions,
                                                                     String filepath,
                                                                     Boolean makeInf) {
         final boolean cont = makeInf;
         env.setParallelism(numberOfPartitions);
-        DataStream<Edge<Long, String>> edges = env.readTextFile(filepath)
-                .filter(new FilterFunction<String>() {
-                    @Override
-                    public boolean filter(String s) {
-                        return !s.isBlank() && !s.startsWith("#");
+        DataStream<Edge<Long, String>> edges;
+        if(timeBetweenElements != 0) {
+            SourceFunction<Edge<Long, String>> mySourceFunction = new SourceFunction<Edge<Long, String>>() {
+                boolean isRunning = true;
+                @Override
+                public void run(SourceContext<Edge<Long, String>> sourceContext) throws Exception {
+                    Stream<String> stream = Files.lines(Path.of(filepath));
+                    Iterator<String> it = stream.iterator();
+                    while (isRunning && it.hasNext()) {
+                        synchronized (sourceContext.getCheckpointLock()) {
+                            String s = it.next();
+                            if (!s.isBlank() && !s.startsWith("#")) {
+                                String[] fields = s.split("\\s");
+                                long src = Long.parseLong(fields[0]);
+                                long trg = Long.parseLong(fields[1]);
+                                sourceContext.collect(new Edge<>(src, trg, null));
+                                try {
+                                    Thread.sleep(timeBetweenElements);
+                                } catch (InterruptedException ignored) {
+                                }
+                            }
+                        }
                     }
-                })
-                .map(new MapFunction<String, Edge<Long, String>>() {
-                    @Override
-                    public Edge<Long, String> map(String s) {
-                        String[] fields = s.split("\\s");
-                        long src = Long.parseLong(fields[0]);
-                        long trg = Long.parseLong(fields[1]);
-                        return new Edge<>(src, trg, null);
-                    }
-                });
+                    cancel();
+                }
+
+                @Override
+                public void cancel() {
+                    isRunning = false;
+                }
+            };
+            edges = env.addSource(mySourceFunction);
+        } else {
+            edges = env.readTextFile(filepath)
+                    .filter(new FilterFunction<String>() {
+                        @Override
+                        public boolean filter(String s) {
+                            return !s.isBlank() && !s.startsWith("#");
+                        }
+                    })
+                    .map(new MapFunction<String, Edge<Long, String>>() {
+                        @Override
+                        public Edge<Long, String> map(String s) {
+                            String[] fields = s.split("\\s");
+                            long src = Long.parseLong(fields[0]);
+                            long trg = Long.parseLong(fields[1]);
+                            return new Edge<>(src, trg, null);
+                        }
+                    });
+        }
         DataStream<Tuple2<Edge<Long, String>, Integer>> partitionedStream =
                 new PartitionEdges<Long, String>().getPartitionedEdges(edges, numberOfPartitions);
         GradoopIdSet graphId = new GradoopIdSet();
@@ -151,8 +198,8 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                 return new TemporalEdge(
                         GradoopId.get(), //get new GradoopId
                         null,
-                        new GradoopId(edge.f0.getSource().intValue(),0, (short) 0, 0), //src
-                        new GradoopId(edge.f0.getTarget().intValue(),0, (short) 0, 0), //trg
+                        new GradoopId(edge.f0.getSource().intValue(), 0, (short) 0, 0), //src
+                        new GradoopId(edge.f0.getTarget().intValue(), 0, (short) 0, 0), //trg
                         Properties.createFromMap(properties),
                         graphId,
                         currentTime, //validFrom
@@ -228,33 +275,28 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
             StoredVertex first_vertex = currentState.getRecord(source);
             StoredVertex[] n_vertices = new StoredVertex[neighbours.size()];
 
-            for(int i=0;i<neighbours.size();i++)
-
-            {
-                n_vertices[i]= currentState.getRecord((Long) neighbours.get(i));
+            for (int i = 0; i < neighbours.size(); i++) {
+                n_vertices[i] = currentState.getRecord((Long) neighbours.get(i));
 
             }
 
             LinkedList<Integer> candidates = new LinkedList<Integer>();
-            double MAX_SCORE =  Double.NEGATIVE_INFINITY;
+            double MAX_SCORE = Double.NEGATIVE_INFINITY;
 
             for (int p = 0; p < numPartitions; p++) {
 
-                int occurences=0;
-                for(int i=0;i<neighbours.size();i++)
+                int occurences = 0;
+                for (int i = 0; i < neighbours.size(); i++) {
 
-                {
-
-                    if(n_vertices[i].hasReplicaInPartition(p))
-                    {occurences++;}
+                    if (n_vertices[i].hasReplicaInPartition(p)) {
+                        occurences++;
+                    }
 
                 }
                 double SCORE_m = -1;
-                if(currentState.getMachineVerticesLoad(p) <= loadlimit) {
+                if (currentState.getMachineVerticesLoad(p) <= loadlimit) {
                     SCORE_m = (double) occurences - alpha * gamma * Math.pow((double) currentState.getMachineVerticesLoad(p), gamma - 1);
-                }
-
-                else if(currentState.getMachineVerticesLoad(p) > loadlimit) {
+                } else if (currentState.getMachineVerticesLoad(p) > loadlimit) {
                     SCORE_m = Double.NaN;
                 }
 
@@ -296,15 +338,8 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                 }
 
             }
-
-
-            //System.out.print("source" + source);
-            //System.out.println(machine_id);
-
             return machine_id;
-
         }
-
     }
 
     public static DataStream<Tuple2<Long, List<Long>>> getVertices(StreamExecutionEnvironment env, String filepath) throws IOException {
@@ -317,14 +352,14 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                     public Tuple2<Long, List<Long>> map(String s) throws Exception {
                         String[] fields = s.split("\\[");
                         String src = fields[0];
-                        int h=src.indexOf(':');
-                        src=src.substring(0,h);
+                        int h = src.indexOf(':');
+                        src = src.substring(0, h);
                         Long source = Long.parseLong(src);
-                        String trg= fields[1];
+                        String trg = fields[1];
 
                         long n = trg.indexOf("]");
                         String j = trg.substring(0, (int) n);
-                        String fg =j.replaceAll("\\s","");
+                        String fg = j.replaceAll("\\s", "");
                         String[] ne = fg.split("\\,");
                         int f = ne.length;
                         List<Long> neg = new ArrayList<Long>();
@@ -336,6 +371,60 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                         return new Tuple2<Long, List<Long>>(source, neg);
                     }
                 });
+
+    }
+
+    private static DataStream<Tuple2<Long, List<Long>>> getVerticesWithThroughput(StreamExecutionEnvironment env,
+                                                                                  String filepath,
+                                                                                  Long timeBetweenElements) throws IOException {
+
+
+        SourceFunction<Tuple2<Long, List<Long>>> mySourceFuntion = new SourceFunction<Tuple2<Long, List<Long>>>() {
+            boolean isRunning=true;
+
+            @Override
+            public void run(SourceContext<Tuple2<Long, List<Long>>> sourceContext) throws Exception {
+                Stream<String> stream = Files.lines(Path.of(filepath));
+                Iterator<String> it = stream.iterator();
+                while (isRunning && it.hasNext()) {
+                    synchronized (sourceContext.getCheckpointLock()) {
+
+                        String s = it.next();
+                        String[] fields = s.split("\\[");
+                        String src = fields[0];
+                        int h = src.indexOf(':');
+                        src = src.substring(0, h);
+                        Long source = Long.parseLong(src);
+                        String trg = fields[1];
+
+                        long n = trg.indexOf("]");
+                        String j = trg.substring(0, (int) n);
+                        String fg = j.replaceAll("\\s", "");
+                        String[] ne = fg.split("\\,");
+                        int f = ne.length;
+                        List<Long> neg = new ArrayList<Long>();
+                        neg.add(Long.parseLong(ne[0]));
+                        for (int k = 1; k < f; k++) {
+                            neg.add(Long.parseLong(String.valueOf(ne[k])));
+
+                        }
+                        sourceContext.collect(new Tuple2<>(source, neg));
+                        try {
+                            Thread.sleep(timeBetweenElements);
+                        } catch (InterruptedException ignored) {
+                        }
+                    }
+                }
+                cancel();
+            }
+
+            @Override
+            public void cancel() {
+                isRunning = false;
+            }
+        };
+
+        return env.addSource(mySourceFuntion);
 
     }
 

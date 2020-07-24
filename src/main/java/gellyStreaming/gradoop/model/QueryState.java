@@ -29,17 +29,17 @@ public class QueryState implements Serializable {
 
 
     private final MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>> descriptor;
-    private final MapStateDescriptor<GradoopId, Integer> descriptor2;
     private final MapStateDescriptor<Long, HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>> descriptorAL;
     private transient JobID jobID;
     private transient boolean initilized = false;
 
-    public QueryState() throws UnknownHostException {
+    public QueryState() {
         initilized = false;
         ExecutionConfig executionConfig = new ExecutionConfig();
         executionConfig.registerPojoType(GradoopId.class);
         executionConfig.registerPojoType(TemporalEdge.class);
         executionConfig.registerPojoType(HashMap.class);
+        // For sortedEdgeList.
         this.descriptor =
                 new MapStateDescriptor<GradoopId, HashMap<GradoopId, TemporalEdge>>(
                         "sortedEdgeList",
@@ -48,14 +48,8 @@ public class QueryState implements Serializable {
                         TypeInformation.of(new TypeHint<HashMap<GradoopId, TemporalEdge>>() {
                         }).createSerializer(executionConfig)
                 );
-        this.descriptor2 =
-                new MapStateDescriptor<GradoopId, Integer>(
-                        "vertexDegree",
-                        TypeInformation.of(new TypeHint<GradoopId>() {
-                        }).createSerializer(executionConfig),
-                        TypeInformation.of(new TypeHint<Integer>() {
-                        }).createSerializer(executionConfig)
-                );
+
+        // Only using this descriptor, since AL is the best format for triangle counting.
         this.descriptorAL =
                 new MapStateDescriptor<>(
                         "adjacencyList",
@@ -76,15 +70,15 @@ public class QueryState implements Serializable {
             String tmHostname = null;
             try {
                 tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-            } catch (UnknownHostException e) {
-                e.printStackTrace();
-            }
-            int proxyPort = 9069;
-            try {
+                System.out.println("tmhostname: "+tmHostname);
+                int proxyPort = 9069;
+
                 //For cluster
                 this.client = new QueryableStateClient(tmHostname, proxyPort);
+
                 // For local IDE
                 //this.client = new QueryableStateClient("localhost", proxyPort);
+
             } catch (UnknownHostException e) {
                 e.printStackTrace();
             }
@@ -404,112 +398,4 @@ public class QueryState implements Serializable {
         }
     }
 
-    public MapState<GradoopId, Integer> getVertexDegree(int key) throws Exception {
-        CompletableFuture<MapState<GradoopId, Integer>> resultFuture =
-                client.getKvState(
-                        jobID,
-                        "vertexDegree",
-                        key,
-                        new TypeHint<Integer>() {},
-                        descriptor2);
-        AtomicReference<Boolean> results = new AtomicReference<>(false);
-        final Tuple1<MapState<GradoopId, Integer>> def = new Tuple1<>();
-        try {
-            def.f0 = resultFuture.get();
-            results.set(true);
-        }catch (Exception e) {
-            System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
-        }
-        if(results.get()) {
-            return def.f0;
-        } else {
-            throw new Exception();
-        }
-    }
-
-
-    public void initialize2(JobID jobID) throws UnknownHostException {
-        //String tmHostname = TaskManagerLocation.getHostName(InetAddress.getLocalHost());
-        //String tmHostname = "127.0.0.1";
-        //int proxyPort = 9069;
-        this.jobID = jobID;
-        initilized = true;
-        ExecutionConfig executionConfig = new ExecutionConfig();
-
-        //this.client = new QueryableStateClient(tmHostname, proxyPort);
-        MapStateDescriptor<Integer, Integer> descriptor2 =
-                new MapStateDescriptor<Integer, Integer>(
-                        "state",
-                        TypeInformation.of(new TypeHint<Integer>() {
-                        }).createSerializer(executionConfig),
-                        TypeInformation.of(new TypeHint<Integer>() {
-                        }).createSerializer(executionConfig)
-                );
-        System.out.println("jobid: " + jobID.toString());
-        //System.out.println("tmHostname: " + client.);
-    }
-
-    public MapState<GradoopId, HashSet<GradoopId>> getState2(Integer key) throws Exception {
-        ExecutionConfig executionConfig = new ExecutionConfig();
-        MapStateDescriptor<GradoopId, HashSet<GradoopId>> descriptor3 =
-                new MapStateDescriptor<GradoopId, HashSet<GradoopId>>(
-                        "adjacencyList",
-                        TypeInformation.of(new TypeHint<GradoopId>() {
-                        }).createSerializer(executionConfig),
-                        TypeInformation.of(new TypeHint<HashSet<GradoopId>>() {
-                        }).createSerializer(executionConfig)
-                );
-        CompletableFuture<MapState<GradoopId, HashSet<GradoopId>>> resultFuture =
-                client.getKvState(
-                        jobID,
-                        "adjacencyList",
-                        key,
-                        new TypeHint<Integer>() {
-                        },
-                        descriptor3);
-        AtomicReference<Boolean> results = new AtomicReference<>(false);
-        final Tuple1<MapState<GradoopId, HashSet<GradoopId>>> def = new Tuple1<>();
-        try{
-            def.f0 = resultFuture.get();
-            results.set(true);
-        } catch (Exception e) {
-            System.out.println("In QS: "+e);
-        }
-
-        if(results.get()) {
-            return def.f0;
-        } else {
-            throw new Exception();
-        }
-    }
-
-    public MapState<Integer, Integer> getState3(Integer key) throws Exception {
-        ExecutionConfig executionConfig = new ExecutionConfig();
-        MapStateDescriptor<Integer, Integer> descriptor = new MapStateDescriptor<Integer, Integer>(
-                "state",
-                TypeInformation.of(Integer.class).createSerializer(executionConfig),
-                TypeInformation.of(Integer.class).createSerializer(executionConfig));
-        CompletableFuture<MapState<Integer, Integer>> resultFuture =
-                client.getKvState(
-                        jobID,
-                        "state",
-                        key,
-                        new TypeHint<Integer>() {
-                        },
-                        descriptor);
-        AtomicReference<Boolean> results = new AtomicReference<>(false);
-        final Tuple1<MapState<Integer, Integer>> def = new Tuple1<>();
-        try{
-            def.f0 = resultFuture.get();
-            results.set(true);
-        } catch (Exception e) {
-            System.out.println("In QS: "+e);
-        }
-
-        if(results.get()) {
-            return def.f0;
-        } else {
-            throw new Exception();
-        }
-    }
 }

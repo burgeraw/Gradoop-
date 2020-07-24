@@ -38,22 +38,22 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                 } catch(Exception e) {
                     tries++;
                     if(tries>= 10) {
-                        System.out.println("Error retrieving state. " + e);
+                        System.out.println("Error retrieving state. " + e );
+                        e.printStackTrace();
                     }
                 }
             }
 
         }
+        assert localState!= null;
         try {
             for(long timestamp: localState.keys()) {
                 if(timestamp <= maxValidTo && timestamp>= from) {
                     for (GradoopId src : localState.get(timestamp).keySet()) {
-                        //if(GradoopIdUtil.getModulo(src, localKey, allKeys)) {
                         if (!localAdjacencyList.containsKey(src)) {
                             localAdjacencyList.put(src, new HashMap<>());
                         }
                         localAdjacencyList.get(src).putAll(localState.get(timestamp).get(src));
-                        //}
                     }
                 }
             }
