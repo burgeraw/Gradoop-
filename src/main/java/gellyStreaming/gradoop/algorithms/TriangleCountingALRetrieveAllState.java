@@ -7,6 +7,7 @@ import org.apache.flink.api.common.state.MapState;
 import org.gradoop.common.model.impl.id.GradoopId;
 import org.gradoop.temporal.model.impl.pojo.TemporalEdge;
 
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,6 +36,21 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                     long stop = System.currentTimeMillis();
                     QStimer.getAndAdd((stop - start));
                     break;
+                } catch (ConcurrentModificationException e) {
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ex) {
+                        ex.printStackTrace();
+                    }
+                    tries++;
+                    if (tries >= 10) {
+                        try {
+                            e.getCause();
+                            throw new Exception("We tried to get state 10 times, but failed. "+e);
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
+                    }
                 } catch(Exception e) {
                     tries++;
                     if(tries>= 10) {
@@ -83,6 +99,20 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                             }
                         }
                         tries = maxTries;
+                    } catch (ConcurrentModificationException e) {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException ignored) { }
+                        tries++;
+                        if (tries >= maxTries) {
+                            try {
+                                e.getCause();
+                                throw new Exception("We tried to get state " + maxTries + " times, but failed. "+e);
+                            } catch (Exception ex) {
+                                ex.printStackTrace();
+                            }
+                        }
+
                     } catch (Exception e) {
                         tries++;
                         Thread.sleep(10);

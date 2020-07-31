@@ -389,7 +389,7 @@ public class Tests {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         //SimpleTemporalEdgeStream stream = makeSimpleTemporalEdgeStream.getVertexPartitionedStream(env, 1L, 2,
         //        "/home/annemarie/Documents/gitkraken/Gradoop++/resources/AL/email-Eu-core", 1005, 32770, false );
-        SimpleTemporalEdgeStream stream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(env, 1L,
+        SimpleTemporalEdgeStream stream = makeSimpleTemporalEdgeStream.getEdgePartitionedStream(env,
                 2, "/home/annemarie/Documents/gitkraken/Gradoop++/src/main/resources/email-Eu-core.txt", false);
         //stream.print();
         stream.numberOfEdges().print();

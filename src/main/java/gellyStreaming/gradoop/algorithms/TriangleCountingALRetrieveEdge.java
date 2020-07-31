@@ -52,9 +52,17 @@ public class TriangleCountingALRetrieveEdge implements Algorithm<String, MapStat
                 long stop = System.currentTimeMillis();
                 QStimer.getAndAdd((stop - start));
                 break;
+            } catch (ConcurrentModificationException e) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) { }
+                tries1++;
+                if (tries1 >= 10) {
+                    System.out.println("Error retrieving state. " + e);
+                }
             } catch (Exception e) {
                 tries1++;
-                if (tries1 == 10) {
+                if (tries1 >= 10) {
                     System.out.println("Error retrieving state. " + e);
                 }
             }
@@ -148,12 +156,20 @@ public class TriangleCountingALRetrieveEdge implements Algorithm<String, MapStat
                                                         }
                                                     }
                                                     break;
+                                                } catch (ConcurrentModificationException e) {
+                                                    try {
+                                                        Thread.sleep(1000);
+                                                    } catch (InterruptedException ignored) { }
+                                                    tries++;
+                                                    if (tries >= 10) {
+                                                        System.out.println("Error retrieving state. " + e);
+                                                    }
                                                 } catch (NullPointerException e) {
                                                     e.printStackTrace();
                                                 } catch (Exception e) {
                                                     tries++;
                                                     Thread.sleep(10);
-                                                    if (tries == 10) {
+                                                    if (tries >= 10) {
                                                         System.out.print("ERROR, tried 10 times & failed using QS. " + e);
                                                     }
                                                 }
@@ -196,10 +212,18 @@ public class TriangleCountingALRetrieveEdge implements Algorithm<String, MapStat
                             break;
                         } catch (NullPointerException e) {
                             e.printStackTrace();
-                        } catch (Exception e) {
+                        } catch (ConcurrentModificationException e) {
+                            try {
+                                Thread.sleep(1000);
+                            } catch (InterruptedException ignored) { }
+                            tries++;
+                            if (tries >= 10) {
+                                System.out.println("Error retrieving state. " + e);
+                            }
+                        }catch (Exception e) {
                             tries++;
                             Thread.sleep(10);
-                            if (tries == 10) {
+                            if (tries >= 10) {
                                 System.out.print("ERROR, tried 10 times & failed using QS. " + e);
                             }
                         }

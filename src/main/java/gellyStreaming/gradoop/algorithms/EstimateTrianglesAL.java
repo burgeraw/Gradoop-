@@ -46,9 +46,17 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
         while (localState == null && tries1 < 10) {
             try {
                 localState = QS.getALState(localKey);
+            } catch (ConcurrentModificationException e) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) { }
+                tries1++;
+                if (tries1 >= 10) {
+                    System.out.println("Error retrieving state. " + e);
+                }
             } catch (Exception e) {
                 tries1++;
-                if (tries1 == 10) {
+                if (tries1 >= 10) {
                     System.out.println("Error retrieving state. " + e);
                 }
             }
@@ -198,7 +206,16 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
                                         QSqueue.remove(id3);
                                     }
                                     break;
-                                } catch (Exception e) {
+                                } catch (ConcurrentModificationException e) {
+                                    try {
+                                        Thread.sleep(1000);
+                                    } catch (InterruptedException ignored) { }
+                                    tries++;
+                                    if (tries >= 10) {
+                                        System.out.println("Error retrieving state. " + e);
+                                    }
+                                }
+                                catch (Exception e) {
                                     tries++;
                                     if (tries >= 10) {
                                         System.out.println("Error retrieving state. " + e);
@@ -220,7 +237,7 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
                     QSqueue = new HashMap<>();
                 }
             }
-            System.out.println("In " + timeToRun + "ms we sampled \t" + lambdasCount.get() + "\t times in partition " + localKey);
+            System.out.println("In " + (System.currentTimeMillis()-runUntil+timeToRun) + "ms we sampled \t" + lambdasCount.get() + "\t times in partition " + localKey);
             int totalVertices = 0;
             int partitionsCounted = 0;
             for (Integer verticesInPartition : verticesInPartitions) {

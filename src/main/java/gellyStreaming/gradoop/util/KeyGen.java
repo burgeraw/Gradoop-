@@ -3,6 +3,8 @@ package gellyStreaming.gradoop.util;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.util.MathUtils;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
@@ -49,7 +51,7 @@ public class KeyGen
             boolean found = false;
             while (!found)
             {
-                for (int id = lastPosition ; id < 100 ; id++)
+                for (int id = lastPosition ; id < Integer.MAX_VALUE ; id++)
                 {
                     //System.out.println("Hey " + id);
 
@@ -88,13 +90,26 @@ public class KeyGen
     public static void main(String[] args) throws Exception
     {
         //Generate intermediate keys
-        final int p = 4;
+        final int p = 400;
         int numPartitions = p;
         int numKeys       = p;
         int parallelism   = p;
 
         KeyGen keyGenerator = new KeyGen(numPartitions,
                 KeyGroupRangeAssignment.computeDefaultMaxParallelism(parallelism));
+
+        FileWriter fr = new FileWriter("generatedKeys");
+        BufferedWriter bf = new BufferedWriter(fr);
+        for(int i = 0; i < numKeys; i++) {
+            int elem = keyGenerator.next(i);
+            bf.write(""+elem);
+            bf.newLine();
+            System.out.println(elem);
+        }
+        bf.close();
+        fr.close();
+
+/*
         int[] procID = new int[numKeys];
 
         for (int i = 0; i < numKeys ; i++)
@@ -102,5 +117,7 @@ public class KeyGen
 
         for (int elem : procID)
             System.out.println(elem);
+
+ */
     }
 }

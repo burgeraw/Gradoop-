@@ -49,9 +49,17 @@ public class TriangleCountingALRetrieveVertex implements Algorithm<String, MapSt
                 localState = QS.getALState(localKey);
                 long stop = System.currentTimeMillis();
                 QStimer.getAndAdd((stop-start));
+            } catch (ConcurrentModificationException e) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) { }
+                tries1++;
+                if (tries1 >= 10) {
+                    System.out.println("Error retrieving state. " + e);
+                }
             } catch (Exception e) {
                 tries1++;
-                if (tries1 == 10) {
+                if (tries1 >= 10) {
                     System.out.println("Error retrieving state. " + e);
                 }
             }
@@ -153,10 +161,18 @@ public class TriangleCountingALRetrieveVertex implements Algorithm<String, MapSt
                                                         }
                                                         break;
                                                         //} catch (NullPointerException ignored) {
+                                                    } catch (ConcurrentModificationException e) {
+                                                        try {
+                                                            Thread.sleep(1000);
+                                                        } catch (InterruptedException ignored) { }
+                                                        tries++;
+                                                        if (tries >= 10) {
+                                                            System.out.println("Error retrieving state. " + e);
+                                                        }
                                                     } catch (Exception e) {
                                                         tries++;
 
-                                                        if (tries == 10) {
+                                                        if (tries >= 10) {
                                                             System.out.println("ERROR, tried 10 times & failed using QS. " + e);
                                                         }
                                                     }
@@ -195,11 +211,17 @@ public class TriangleCountingALRetrieveVertex implements Algorithm<String, MapSt
                             }
                             break;
                             //} catch (NullPointerException ignored) {
-                        } catch (Exception e) {
-
-
+                        } catch (ConcurrentModificationException e) {
+                            try {
+                                Thread.sleep(1000);
+                            } catch (InterruptedException ignored) { }
                             tries++;
-                            if (tries == 10) {
+                            if (tries >= 10) {
+                                System.out.println("Error retrieving state. " + e);
+                            }
+                        } catch (Exception e) {
+                            tries++;
+                            if (tries >= 10) {
                                 System.out.println("ERROR, tried 10 times & failed using QS. " + e);
                             }
                         }

@@ -23,14 +23,19 @@ public class ELtoAL {
         FileReader fr = new FileReader(inputEL);
         BufferedReader br = new BufferedReader(fr);
         String line;
+        long counter = 0;
         while ((line = br.readLine()) != null) {
-            String[] fields = line.split("\\s");
-            long src = Long.parseLong(fields[0]);
-            long trg = Long.parseLong(fields[1]);
-            state.addEdge(src, trg);
+            if(!line.startsWith("#")) {
+                String[] fields = line.split("\\s");
+                long src = Long.parseLong(fields[0]);
+                long trg = Long.parseLong(fields[1]);
+                state.addEdge(src, trg);
+                counter++;
+            }
         }
         br.close();
         fr.close();
+        System.out.println("edges read: "+counter);
 
         HashMap<Long, HashSet<Long>> stateFinal = state.returnState();
 

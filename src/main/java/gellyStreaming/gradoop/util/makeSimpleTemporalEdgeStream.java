@@ -13,6 +13,7 @@ import org.apache.flink.graph.Edge;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.source.ParallelSourceFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.util.Collector;
 import org.gradoop.common.model.impl.id.GradoopId;
@@ -31,7 +32,6 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
 
 
     public static SimpleTemporalEdgeStream getVertexPartitionedStream(StreamExecutionEnvironment env,
-                                                                      Long timeBetweenElements,
                                                                       Integer numberOfPartitions,
                                                                       String filepath,
                                                                       Integer vertexCount,
@@ -46,16 +46,10 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
         env.setParallelism(1);
         DataStream<Tuple2<Long, List<Long>>> vertices = null;
         try {
-            if (timeBetweenElements != 0) {
-                vertices = getVerticesWithThroughput(env, filepath, timeBetweenElements);
-
-            } else { //max throughput
-                vertices = getVertices(env, filepath);
-            }
+            vertices = getVertices(env, filepath);
         } catch (IOException e) {
             e.printStackTrace();
         }
-
 
         DataStream<Tuple2<Edge<Long, String>, Integer>> edges = vertices.flatMap(new FlatMapFunction<Tuple2<Long, List<Long>>, Tuple2<Edge<Long, String>, Integer>>() {
             CustomKeySelector2 keySelector = new CustomKeySelector2(0);
@@ -97,7 +91,7 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                 });
 
         // Make the stream infinite if necessary
-        SourceFunction<TemporalEdge> infinite = new SourceFunction<TemporalEdge>() {
+        ParallelSourceFunction<TemporalEdge> infinite = new ParallelSourceFunction<TemporalEdge>() {
             @Override
             public void run(SourceContext<TemporalEdge> sourceContext) {
                 while (cont) {
@@ -128,45 +122,13 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
     }
 
     public static SimpleTemporalEdgeStream getEdgePartitionedStream(StreamExecutionEnvironment env,
-                                                                    Long timeBetweenElements,
                                                                     Integer numberOfPartitions,
                                                                     String filepath,
                                                                     Boolean makeInf) {
-        final boolean cont = makeInf;
+        boolean cont = makeInf;
         env.setParallelism(numberOfPartitions);
         DataStream<Edge<Long, String>> edges;
-        if(timeBetweenElements != 0) {
-            SourceFunction<Edge<Long, String>> mySourceFunction = new SourceFunction<Edge<Long, String>>() {
-                boolean isRunning = true;
-                @Override
-                public void run(SourceContext<Edge<Long, String>> sourceContext) throws Exception {
-                    Stream<String> stream = Files.lines(Path.of(filepath));
-                    Iterator<String> it = stream.iterator();
-                    while (isRunning && it.hasNext()) {
-                        synchronized (sourceContext.getCheckpointLock()) {
-                            String s = it.next();
-                            if (!s.isBlank() && !s.startsWith("#")) {
-                                String[] fields = s.split("\\s");
-                                long src = Long.parseLong(fields[0]);
-                                long trg = Long.parseLong(fields[1]);
-                                sourceContext.collect(new Edge<>(src, trg, null));
-                                try {
-                                    Thread.sleep(timeBetweenElements);
-                                } catch (InterruptedException ignored) {
-                                }
-                            }
-                        }
-                    }
-                    cancel();
-                }
 
-                @Override
-                public void cancel() {
-                    isRunning = false;
-                }
-            };
-            edges = env.addSource(mySourceFunction);
-        } else {
             edges = env.readTextFile(filepath)
                     .filter(new FilterFunction<String>() {
                         @Override
@@ -183,7 +145,7 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                             return new Edge<>(src, trg, null);
                         }
                     });
-        }
+        //}
         DataStream<Tuple2<Edge<Long, String>, Integer>> partitionedStream =
                 new PartitionEdges<Long, String>().getPartitionedEdges(edges, numberOfPartitions);
         GradoopIdSet graphId = new GradoopIdSet();
@@ -207,29 +169,35 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                 );
             }
         });
-        SourceFunction infinite = new SourceFunction<TemporalEdge>() {
-            @Override
-            public void run(SourceContext<TemporalEdge> sourceContext) throws Exception {
-                while (cont) {
-                    sourceContext.collect(new TemporalEdge(null, null, null, null,
-                            null, null, null, null));
-                    Thread.sleep(1000);
-                }
-            }
-
-            @Override
-            public void cancel() {
-
-            }
-        };
-        DataStream<TemporalEdge> makeInfinite = env.addSource(infinite);
-        DataStream<TemporalEdge> finalEdges = tempEdges.union(makeInfinite)
-                .filter(new FilterFunction<TemporalEdge>() {
-                    @Override
-                    public boolean filter(TemporalEdge edge) throws Exception {
-                        return edge.getId() != null;
+        DataStream<TemporalEdge> finalEdges;
+        if(makeInf) {
+            SourceFunction infinite = new SourceFunction<TemporalEdge>() {
+                @Override
+                public void run(SourceContext<TemporalEdge> sourceContext) throws Exception {
+                    while (true) {
+                        sourceContext.collect(new TemporalEdge(null, null, null, null,
+                                null, null, null, null));
+                        Thread.sleep(1000);
                     }
-                });
+                }
+
+                @Override
+                public void cancel() {
+
+                }
+            };
+            DataStream<TemporalEdge> makeInfinite = env.addSource(infinite);
+            finalEdges = tempEdges.union(makeInfinite)
+                    .filter(new FilterFunction<TemporalEdge>() {
+                        @Override
+                        public boolean filter(TemporalEdge edge) {
+                            return edge.getId() != null;
+                        }
+                    });
+        } else {
+            finalEdges = tempEdges;
+        }
+
         return new SimpleTemporalEdgeStream(finalEdges, env, graphId);
     }
 
@@ -379,7 +347,7 @@ public class makeSimpleTemporalEdgeStream implements Serializable {
                                                                                   Long timeBetweenElements) throws IOException {
 
 
-        SourceFunction<Tuple2<Long, List<Long>>> mySourceFuntion = new SourceFunction<Tuple2<Long, List<Long>>>() {
+        ParallelSourceFunction<Tuple2<Long, List<Long>>> mySourceFuntion = new ParallelSourceFunction<Tuple2<Long, List<Long>>>() {
             boolean isRunning=true;
 
             @Override

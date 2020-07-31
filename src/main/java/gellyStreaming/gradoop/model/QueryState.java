@@ -105,7 +105,7 @@ public class QueryState implements Serializable {
             def.f0 = resultFuture.get().get(srcVertex);
             results.set(true);
         }catch (Exception e) {
-            System.out.println("We failed to get key: "+key+" with srcVertex: "+srcVertex+" in QS. Exception: "+e);
+            throw e;
         }
         if(results.get()) {
             return def.f0;
@@ -131,7 +131,7 @@ public class QueryState implements Serializable {
         } catch (NullPointerException e) {
             succesfulRetrieval.set(true);
         } catch (Exception e) {
-            e.printStackTrace();
+            throw e;
         }
         if(succesfulRetrieval.get()) {
             return result.get();
@@ -155,7 +155,7 @@ public class QueryState implements Serializable {
             def.f0 = resultFuture.get();
             results.set(true);
         }catch (Exception e) {
-            System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+            throw e;
         }
         if(results.get()) {
             return def.f0;
@@ -284,20 +284,23 @@ public class QueryState implements Serializable {
         Boolean[] contains = new Boolean[src.size()];
         for(int j = 0; j < contains.length; j++) {
             contains[j] = null;
-        }
-        for(long timestamp: resultFuture.get().keys()) {
-            if (timestamp <= To && timestamp >= From) {
-                for (int i = 0; i < src.size(); i++) {
-                    if (resultFuture.get().get(timestamp).containsKey(src.get(i)) &&
-                            resultFuture.get().get(timestamp).get(src.get(i)).containsKey(trg.get(i))) {
-                        contains[i] = true;
-                    } else if (resultFuture.get().get(timestamp).containsKey(src.get(i)) &&
-                            !resultFuture.get().get(timestamp).get(src.get(i)).containsKey(trg.get(i)) &&
-                            contains[i] == null) {
-                        contains[i] = false;
+        }try {
+            for (long timestamp : resultFuture.get().keys()) {
+                if (timestamp <= To && timestamp >= From) {
+                    for (int i = 0; i < src.size(); i++) {
+                        if (resultFuture.get().get(timestamp).containsKey(src.get(i)) &&
+                                resultFuture.get().get(timestamp).get(src.get(i)).containsKey(trg.get(i))) {
+                            contains[i] = true;
+                        } else if (resultFuture.get().get(timestamp).containsKey(src.get(i)) &&
+                                !resultFuture.get().get(timestamp).get(src.get(i)).containsKey(trg.get(i)) &&
+                                contains[i] == null) {
+                            contains[i] = false;
+                        }
                     }
                 }
             }
+        }catch (Exception e) {
+            throw e;
         }
         results.set(true);
         if(results.get()) {
@@ -350,17 +353,21 @@ public class QueryState implements Serializable {
                         descriptorAL);
         AtomicReference<Boolean> results = new AtomicReference<>(false);
         AtomicReference<Boolean> exists = new AtomicReference<>(null);
-        for(long timestamp: resultFuture.get().keys()) {
-            if(timestamp <= to && timestamp >= from) {
-                if(resultFuture.get().get(timestamp).containsKey(srcVertex)) {
-                    if (resultFuture.get().get(timestamp).get(srcVertex).containsKey(trgVertex)) {
-                        exists.set(true);
-                        break;
+        try {
+            for (long timestamp : resultFuture.get().keys()) {
+                if (timestamp <= to && timestamp >= from) {
+                    if (resultFuture.get().get(timestamp).containsKey(srcVertex)) {
+                        if (resultFuture.get().get(timestamp).get(srcVertex).containsKey(trgVertex)) {
+                            exists.set(true);
+                            break;
+                        }
                     }
                 }
             }
+            results.set(true);
+        } catch (Exception e) {
+            throw e;
         }
-        results.set(true);
         if(results.get()) {
             return exists.get();
         } else {
@@ -389,7 +396,7 @@ public class QueryState implements Serializable {
             answer.set(false);
             results.set(true);
         } catch (Exception e) {
-            System.out.println("We failed to get key: "+key+" in QS. Exception: "+e);
+            throw e;
         }
         if(results.get()) {
             return answer.get();
