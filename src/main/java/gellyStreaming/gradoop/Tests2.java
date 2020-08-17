@@ -1,6 +1,5 @@
 package gellyStreaming.gradoop;
 
-
 import gellyStreaming.gradoop.model.GraphState;
 import gellyStreaming.gradoop.model.SimpleTemporalEdgeStream;
 import gellyStreaming.gradoop.partitioner.HashVertexPartitioner;
@@ -45,6 +44,7 @@ public class Tests2 {
         JobClient jobClient = env.executeAsync();
         //JobExecutionResult result = env.execute();
     //    gs.overWriteQS(jobClient.getJobID());
+        //skata
         Logger LOG = LoggerFactory.getLogger(GraphState.class);
         LOG.error("log");
 
