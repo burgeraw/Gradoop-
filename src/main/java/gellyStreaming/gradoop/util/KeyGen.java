@@ -90,7 +90,7 @@ public class KeyGen
     public static void main(String[] args) throws Exception
     {
         //Generate intermediate keys
-        final int p = 400;
+        final int p = 4;
         int numPartitions = p;
         int numKeys       = p;
         int parallelism   = p;

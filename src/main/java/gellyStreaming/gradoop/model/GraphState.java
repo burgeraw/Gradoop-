@@ -319,12 +319,12 @@ public class GraphState implements Serializable {
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
                     out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
                 } else {
-                    if(timestamps.peekLast() < (timestamp-30000L)) {
+                    if(timestamps.peekLast() < (timestamp-60000L)) {
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                         out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t  total removal time was \t"+totalRemovalTime.get());
                     } else {
-                        nextOutputTimestamp.update(timestamp+30000L);
+                        nextOutputTimestamp.update(timestamp+60000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
                     }
                 }
@@ -482,7 +482,7 @@ public class GraphState implements Serializable {
                             ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
                     out.collect(ctx.getCurrentKey()+"\t :This took \t" + (ctx.timerService().currentProcessingTime() - current) );
                 } else {
-                    if(timestamps.peekLast() < (timestamp-30000L)) {
+                    if(timestamps.peekLast() < (timestamp-60000L)) {
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t  total removal time was \t"+totalRemovalTime.get());
                         long counter = 0;
@@ -501,7 +501,7 @@ public class GraphState implements Serializable {
                                 ctx.getCurrentKey(), keys, 0, Long.MAX_VALUE));
                         out.collect(ctx.getCurrentKey()+"\t :This took \t" + (ctx.timerService().currentProcessingTime() - timestamp));
                     } else {
-                        nextOutputTimestamp.update(timestamp+30000L);
+                        nextOutputTimestamp.update(timestamp+60000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
                     }
                 }
@@ -657,12 +657,12 @@ public class GraphState implements Serializable {
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
                     out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
                 } else {
-                    if(timestamps.peekLast() < (timestamp-30000L)) {
+                    if(timestamps.peekLast() < (timestamp-60000L)) {
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t  total removal time was \t"+totalRemovalTime.get());
                         out.collect(Tuple4.of(ctx.getCurrentKey(), keys, 0L, Long.MAX_VALUE));
                     } else {
-                        nextOutputTimestamp.update(timestamp+30000L);
+                        nextOutputTimestamp.update(timestamp+60000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
                     }
                 }
@@ -821,7 +821,7 @@ public class GraphState implements Serializable {
                                     timestamp, timestamp + windowSize));
                     out.collect(ctx.getCurrentKey()+"\t :This took \t" + (ctx.timerService().currentProcessingTime() - current));
                 } else {
-                    if(timestamps.peekLast() < (timestamp-30000L)) {
+                    if(timestamps.peekLast() < (timestamp-60000L)) {
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t  total removal time was \t"+totalRemovalTime.get());
 
@@ -836,7 +836,7 @@ public class GraphState implements Serializable {
                                         0, Long.MAX_VALUE));
                         out.collect(ctx.getCurrentKey()+"\t :This took \t" + (ctx.timerService().currentProcessingTime() - timestamp));
                     } else {
-                        nextOutputTimestamp.update(timestamp+30000L);
+                        nextOutputTimestamp.update(timestamp+60000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
                     }
                 }
@@ -1008,7 +1008,7 @@ public class GraphState implements Serializable {
                     ctx.timerService().registerProcessingTimeTimer(timestamp + slide);
                     out.collect(Tuple4.of(ctx.getCurrentKey(), keys, timestamp, timestamp + windowSize));
                 } else {
-                    if(timestamps.peekLast() < (timestamp-30000L)) {
+                    if(timestamps.peekLast() < (timestamp-60000L)) {
                         out.collect(Tuple4.of(ctx.getCurrentKey(), keys, 0L, Long.MAX_VALUE));
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t  total removal time was \t"+totalRemovalTime.get());
@@ -1022,7 +1022,7 @@ public class GraphState implements Serializable {
                         System.out.println("Thread \t"+Thread.currentThread().getId()+"\t had edgeCount: \t "+counter.get()+
                                 " datastructure adjacencylist");
                     } else {
-                        nextOutputTimestamp.update(timestamp+30000L);
+                        nextOutputTimestamp.update(timestamp+60000L);
                         ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
                     }
                 }
@@ -1193,7 +1193,7 @@ public class GraphState implements Serializable {
                         out.collect(ctx.getCurrentKey()+"\t :Alg took \t" + (ctx.timerService().currentProcessingTime() - current) + "\t ms");
 
                     } else {
-                        if(timestamps.peekLast() < (timestamp-30000L)) {
+                        if(timestamps.peekLast() < (timestamp-60000L)) {
                             System.out.println("Thread \t"+Thread.currentThread().getId()+"\t its last batchtimestamp was \t"+timestamps.peekLast());
                             System.out.println("Thread \t"+Thread.currentThread().getId()+"\t  total removal time was \t"+totalRemovalTime.get());
 
@@ -1211,7 +1211,7 @@ public class GraphState implements Serializable {
                                                 0, Long.MAX_VALUE));
                             out.collect(ctx.getCurrentKey()+"\t :Alg took \t" + (ctx.timerService().currentProcessingTime() - timestamp));
                         } else {
-                            nextOutputTimestamp.update(timestamp+30000L);
+                            nextOutputTimestamp.update(timestamp+60000L);
                             ctx.timerService().registerProcessingTimeTimer(nextOutputTimestamp.value());
                         }
                     }

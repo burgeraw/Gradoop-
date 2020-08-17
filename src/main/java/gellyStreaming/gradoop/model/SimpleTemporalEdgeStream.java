@@ -105,7 +105,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
     }
 
     @Override
-    public GradoopGraphStream<TemporalGraphHead, TemporalVertex, TemporalEdge> distinct() {
+    public SimpleTemporalEdgeStream distinct() {
         DataStream<TemporalEdge> distinctEdges = this.edges
                 .keyBy((KeySelector<TemporalEdge, Object>) TemporalEdge::getSourceId)
                 .flatMap(
@@ -293,6 +293,7 @@ public class SimpleTemporalEdgeStream extends GradoopGraphStream<TemporalGraphHe
                 collector.collect(reverseEdge(temporalEdge));
             }
         });
+        //SimpleTemporalEdgeStream distinct = new SimpleTemporalEdgeStream(undirectedEdges, this.context, new GradoopIdSet()).distinct();
         return new SimpleTemporalEdgeStream(undirectedEdges, this.context, new GradoopIdSet());
     }
 

@@ -86,6 +86,9 @@ public class TriangleCountingALRetrieveVertex implements Algorithm<String, MapSt
         // two neighbours are connected with an egde, which makes it a triangle.
         // Only count the triangles if the srcId < neighbour1 < neighbour2 to avoid duplicates.
         AtomicInteger triangleCount = new AtomicInteger(0);
+        long currentsrcId = 0;
+        long allVertices = localAdjacencyList.keySet().size();
+        int percentage = 0;
         for (GradoopId srcId : localAdjacencyList.keySet()) {
             Set<GradoopId> neighboursSet = localAdjacencyList.get(srcId).keySet();
             GradoopId[] neighbours = neighboursSet.toArray(GradoopId[]::new);
@@ -187,6 +190,12 @@ public class TriangleCountingALRetrieveVertex implements Algorithm<String, MapSt
                         }
                     }
                 }
+            currentsrcId++;
+            int newper;
+            if((newper = (int)(currentsrcId/allVertices*100.)) > percentage) {
+                percentage = newper;
+                System.out.println("At "+percentage+"%");
+            }
         }
         // Retrieved info doesn't need to be put in cache, because we won't use it again after.
         if (QSqueueSize.get() != 0) {

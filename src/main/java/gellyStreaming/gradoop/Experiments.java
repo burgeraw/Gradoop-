@@ -5,6 +5,7 @@ import gellyStreaming.gradoop.model.GraphState;
 import gellyStreaming.gradoop.model.QueryState;
 import gellyStreaming.gradoop.model.SimpleTemporalEdgeStream;
 import gellyStreaming.gradoop.util.ELtoAL;
+import gellyStreaming.gradoop.util.GradoopIdUtil;
 import gellyStreaming.gradoop.util.makeSimpleTemporalEdgeStream;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.configuration.ConfigOptions;
@@ -14,6 +15,7 @@ import org.apache.flink.configuration.QueryableStateOptions;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.gradoop.common.model.impl.id.GradoopId;
 
 import java.io.*;
 import java.net.UnknownHostException;
@@ -250,15 +252,14 @@ public class Experiments {
         if (args.length == 0) {
             //Experiment1("src/main/resources/email-Eu-core.txt", "25571", "1",
               //      "sortedEL", "edge", null, "8");
-            Experiment2("1", "1", "/home/annemarie/Documents/gitkraken/Gradoop++/src/main/resources/Cit-HepPh.txt",
-                    "AL", "active", "4", "100", "50");
+            //Experiment2("1", "1", "/home/annemarie/Documents/gitkraken/Gradoop++/src/main/resources/Cit-HepPh.txt",
+              //      "AL", "active", "4", "100", "50");
             //Experiment3("edge", "edge", "true", "100000",
               //      "/home/annemarie/Documents/gitkraken/Gradoop++/src/main/resources/email-Eu-core.txt", "1",
                 //    "1005", "25570", "false", "4");
             //Experiment5("true", "10000", "/home/annemarie/Documents/gitkraken/Gradoop++/resources/AL/Cit-HepPh",
               //      "1", "34546", "421578", "false", "2", "1000",
                 //    "100", "200000", "null", "true");
-
 
         }
         // To convert Datasets in EL format to AL format

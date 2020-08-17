@@ -134,6 +134,9 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
         // Only start with vertices what, when used Modulo, are allocated to this partition.
         // This so each partition only check a non-overlapping part of the potential triangles.
         AtomicInteger triangleCount = new AtomicInteger(0);
+        long currentsrcId = 0;
+        long allVertices = localAdjacencyList.keySet().size();
+        int percentage = 0;
         for (GradoopId srcId : localAdjacencyList.keySet()) {
             if(GradoopIdUtil.getModulo(srcId, localKey, allKeys)) {
                 Set<GradoopId> neighboursSet = localAdjacencyList.get(srcId).keySet();
@@ -162,6 +165,12 @@ public class TriangleCountingALRetrieveAllState implements Algorithm<String, Map
                         }
                     }
                 }
+            }
+            currentsrcId++;
+            int newper;
+            if((newper = (int)(currentsrcId/allVertices*100.)) > percentage) {
+                percentage = newper;
+                System.out.println("At "+percentage+"%");
             }
         }
         System.out.println("Time spend on QS in partition \t"+localKey+"\t:\t"+QStimer.get());

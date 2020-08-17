@@ -85,6 +85,7 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
         AtomicInteger lambdasCount = new AtomicInteger(0);
         AtomicDouble lambdas = new AtomicDouble(0);
 
+        /*
         // When querying the remote states we also retrieve their total number of vertices
         Integer[] verticesInPartitions = new Integer[allKeys.length];
         for (int i = 0; i < allKeys.length; i++) {
@@ -94,6 +95,8 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
                 verticesInPartitions[i] = -1;
             }
         }
+
+         */
 
         GradoopId[] vertexIds = localAdjacencyList.keySet().toArray(GradoopId[]::new);
         int numberLocalVertices = vertexIds.length;
@@ -156,7 +159,7 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
                 // When queue reaches max size, we start querying the other remote partitions until we
                 // have found all vertices in queue, or until we've visited each remote partition and
                 // none of them had the vertexID (can happen in windowed mode).
-                if (QSqueueSize.get() >= QSbatchsize && System.currentTimeMillis() < runUntil) {
+                if (QSqueueSize.get() >= QSbatchsize ){//&& System.currentTimeMillis() < runUntil) {
                     for (int partition : allKeys) {
                         if (partition != localKey) {
 
@@ -173,15 +176,18 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
                                     HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>> retrieved;
                                     // If we hadn't retrieved the number of vertices in the remote partition yet,
                                     // we combine this query with the state request.
+                                    /*
                                     if (verticesInPartitions[indexPartition] == -1) {
                                         Tuple2<HashMap<GradoopId, HashMap<GradoopId, TemporalEdge>>, Integer> temp =
                                                 QS.getALVerticesFromToPlusTotal(partition, toQuery, from, maxValidTo);
                                         retrieved = temp.f0;
                                         verticesInPartitions[indexPartition] = temp.f1;
                                     } else {
+
+                                     */
                                         retrieved =
                                                 QS.getALVerticesFromTo(partition, toQuery, from, maxValidTo);
-                                    }
+                                    //}
                                     for (GradoopId id3 : retrieved.keySet()) {
                                         Set<GradoopId> neighbours3 = retrieved.get(id3).keySet();
                                         // Save retrieved vertices and their neighbors in cache.
@@ -222,9 +228,9 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
                                     }
                                 }
                             }
-                            if (System.currentTimeMillis() >= runUntil) {
-                                break;
-                            }
+                            //if (System.currentTimeMillis() >= runUntil) {
+                            //    break;
+                           // }
                         }
                     }
                     // If queue still has elements, this means these vertices couldnt be found in all remote partitions.
@@ -237,7 +243,8 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
                     QSqueue = new HashMap<>();
                 }
             }
-            System.out.println("In " + (System.currentTimeMillis()-runUntil+timeToRun) + "ms we sampled \t" + lambdasCount.get() + "\t times in partition " + localKey);
+            //System.out.println("In " + (System.currentTimeMillis()-runUntil+timeToRun) + "ms we sampled \t" + lambdasCount.get() + "\t times in partition " + localKey);
+            /*
             int totalVertices = 0;
             int partitionsCounted = 0;
             for (Integer verticesInPartition : verticesInPartitions) {
@@ -252,11 +259,14 @@ public class EstimateTrianglesAL implements Algorithm<String, MapState<Long, Has
             } else {
                 approxVertices = (int) ((double) totalVertices / partitionsCounted * allKeys.length);
             }
+
+             */
+            int approxVertices = localAdjacencyList.keySet().size();
             double result = (lambdas.get() / lambdasCount.get()) * approxVertices;
             if (lambdasCount.get() == 0) {
                 result = 0;
             }
-            output = "In partition " + localKey + " we estimated \t" + (long)result + "\t triangles";
+            output = "In partition " + localKey + " we estimated \t" + (long)result + "\t triangles over \t"+lambdasCount.get()+"\t times sampling";
             System.out.println(output);
         }
 

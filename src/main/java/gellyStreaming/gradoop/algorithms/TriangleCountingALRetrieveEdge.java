@@ -88,6 +88,9 @@ public class TriangleCountingALRetrieveEdge implements Algorithm<String, MapStat
 
 
         AtomicInteger triangleCount = new AtomicInteger(0);
+        int percentage = 0;
+        long currentsrcId = 0;
+        long allVertices = localAdjacencyList.keySet().size();
         for (GradoopId srcId : localAdjacencyList.keySet()) {
             Set<GradoopId> neighboursSet = localAdjacencyList.get(srcId).keySet();
             GradoopId[] neighbours = neighboursSet.toArray(GradoopId[]::new);
@@ -183,6 +186,12 @@ public class TriangleCountingALRetrieveEdge implements Algorithm<String, MapStat
                         }
                     }
                 }
+            }
+            currentsrcId++;
+            int newper;
+            if((newper = (int)(currentsrcId/allVertices*100.)) > percentage) {
+                percentage = newper;
+                System.out.println("At "+percentage+"%");
             }
         }
         // Retrieved info doesn't need to be put in cache, because we won't use it again after.
